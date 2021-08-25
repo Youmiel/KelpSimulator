@@ -1,5 +1,6 @@
 package com.ishland.simulations.kelpsimulator.impl;
 
+import java.util.LinkedList;
 import java.util.Random;
 
 public class KelpPlant {
