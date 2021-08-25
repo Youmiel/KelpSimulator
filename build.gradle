@@ -1,0 +1,27 @@
+plugins {
+    id 'java'
+    id "com.github.johnrengelman.shadow" version "7.0.0"
+}
+
+group 'com.ishland.simulations'
+version '1.0-SNAPSHOT'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+
+}
+
+jar {
+    manifest {
+        attributes("Main-Class": "com.ishland.simulations.kelpsimulator.Main")
+    }
+}
+
+assemble.dependsOn(shadowJar)
+
+
+
+
