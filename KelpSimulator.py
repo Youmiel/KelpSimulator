@@ -77,8 +77,8 @@ config = {
         'values': [10, 20]
     },
     'grow_after_tick': False,
-    'kelp_count': 10000,
-    'test_time': 72000000,
+    'kelp_count': 1000,
+    'test_time': 72000,
     'keys': ['harvest_period','height_limit']
 }
 # supported types are 'continuous' and 'list'
@@ -101,6 +101,8 @@ def load_config(path: str):
     except:
         with open(path,'w') as file:
             json.dump(config, file, indent=4)
+        print("Config not found, automatically generate default.")
+        exit()
     pass
 
 def translate_list(val: dict) -> list:
@@ -143,7 +145,7 @@ def start():
     conf = config.copy()
     for key_3 in config[config['keys'][2]]:
         conf[config['keys'][2]] = key_3
-        result = []
+        result = {}
         for key_2 in config[config['keys'][1]]:
             conf[config['keys'][1]] = key_2
             for key_1 in config[config['keys'][0]]:
@@ -152,17 +154,18 @@ def start():
                     )
                 simulate(conf)
             # collect data
-            temp_list = [key_2]
+            temp_list = []
             for (c,val) in temp_result:
                 temp_list.append(val)
             temp_result = []
-            result.append(temp_list)
+            result[key_2] = temp_list
 
         path = './' + config['keys'][2] + '=' + str(key_3) +             '<' + config['keys'][0] + ','+ config['keys'][1] + '>'
         with open(path + '.csv','w',newline='') as csvfile:
             writer = csv.writer(csvfile)
             writer.writerow([config['keys'][1] + '|' + config['keys'][0]] +                list(config[config['keys'][0]]))
-            writer.writerows(result)
+            for key_2 in config[config['keys'][1]]:
+                writer.writerows([key_2] + result[key_2])
             
         
             
@@ -182,7 +185,7 @@ def simulate(config: dict):
     }
     for gt in range(config['test_time']):
         tick(gt, counters, config)    
-    eff = decimal.Decimal(counters['item']) / (config['kelp_count'] * config['test_time'])
+    eff = decimal.Decimal(counters['item']) / (config['kelp_count'] * config['test_time'] / 72000)
     temp_result.append((config, eff))
 
 def tick(gametick: int, counters: dict, config: dict):

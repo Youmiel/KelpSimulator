@@ -1,28 +1,32 @@
 {
+    "tick_speed": 3,
+    "harvest_period": {
+        "type": "list",
+        "values": [
+            5120,
+            12000,
+            24000,
+            48000,
+            96000
+        ]
+    },
     "empty_tick": {
         "type": "list",
         "values": [
             5
         ]
     },
-    "grow_after_tick": false,
-    "harvest_period": {
-        "end": 36000,
-        "start": 3600,
-        "step": 600,
-        "type": "continuous"
-    },
     "height_limit": {
-        "end": 25,
-        "start": 1,
-        "step": 1,
-        "type": "continuous"
+        "type": "list",
+        "values": [
+            3
+        ]
     },
-    "kelp_count": 100,
+    "grow_after_tick": false,
+    "kelp_count": 3000,
+    "test_time": 1800000,
     "keys": [
         "harvest_period",
         "height_limit"
-    ],
-    "test_time": 7200000,
-    "tick_speed": 3
+    ]
 }
