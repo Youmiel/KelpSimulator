@@ -1,5 +1,6 @@
 plugins {
     id 'java'
+    id 'java-library'
     id "com.github.johnrengelman.shadow" version "7.0.0"
 }
 
@@ -13,6 +14,10 @@ repositories {
 dependencies {
     // https://mvnrepository.com/artifact/de.siegmar/fastcsv
     implementation group: 'de.siegmar', name: 'fastcsv', version: '2.0.0'
+
+    implementation "org.lwjgl:lwjgl:${project.lwjgl_version}"
+    implementation "org.lwjgl:lwjgl:${project.lwjgl_version}:natives-linux"
+    implementation "org.lwjgl:lwjgl-opencl:${project.lwjgl_version}"
 }
 
 jar {

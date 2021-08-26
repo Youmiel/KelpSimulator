@@ -1,12 +1,15 @@
-package com.ishland.simulations.kelpsimulator.impl;
+package com.ishland.simulations.kelpsimulator.impl.java;
+
+import com.ishland.simulations.kelpsimulator.impl.SimulationResult;
+import com.ishland.simulations.kelpsimulator.impl.Simulator;
 
 import java.util.Arrays;
-import java.util.LongSummaryStatistics;
 import java.util.Objects;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.IntStream;
 
-public class SimulationSession {
+public class JavaSimulationSession implements Simulator {
 
     private static final int SECTION_SIZE = 16 * 16 * 16;
     private static final int SECTION_SURFACE_SIZE = 16 * 16;
@@ -23,7 +26,7 @@ public class SimulationSession {
 
     private final Random random = new Random();
 
-    public SimulationSession(int randomTickSpeed, boolean schedulerFirst, int waterFlowDelay, int kelpCount, long testLength, int harvestPeriod, int heightLimit) {
+    public JavaSimulationSession(int randomTickSpeed, boolean schedulerFirst, int waterFlowDelay, int kelpCount, long testLength, int harvestPeriod, int heightLimit) {
         this.randomTickSpeed = randomTickSpeed;
         this.schedulerFirst = schedulerFirst;
         this.waterFlowDelay = waterFlowDelay;
@@ -33,7 +36,7 @@ public class SimulationSession {
         this.heightLimit = heightLimit;
     }
 
-    public LongSummaryStatistics runSimulation() {
+    public SimulationResult runSimulation() {
         log("Preparing simulation");
         KelpPlant[][] kelpPlants = new KelpPlant[(int) Math.ceil(kelpCount / (double) SECTION_SURFACE_SIZE)][SECTION_SURFACE_SIZE];
         {
@@ -45,28 +48,28 @@ public class SimulationSession {
                 }
             }
         }
+        final IntStream.Builder harvestStream = IntStream.builder();
         log("Running simulation");
         long timeSinceLastHarvest = 0;
         long lastPrint = System.currentTimeMillis();
         long startTime = lastPrint;
         for (long time = 0; time < testLength; time ++) {
-            for (int i = 0; i < randomTickSpeed; i ++) {
-                for (KelpPlant[] group : kelpPlants) {
-                    final int rn = random.nextInt(SECTION_SIZE);
-                    final KelpPlant kelpPlant = rn < SECTION_SURFACE_SIZE ? group[rn] : null;
-                    if (kelpPlant != null) kelpPlant.tick(random);
-                }
-            }
             timeSinceLastHarvest ++;
             if (timeSinceLastHarvest >= harvestPeriod) {
                 for (KelpPlant[] group : kelpPlants) {
                     for (KelpPlant plant : group) {
-                        if (plant != null) plant.harvest();
+                        if (plant != null) harvestStream.accept(plant.harvest(schedulerFirst));
                     }
                 }
-
                 time += waterFlowDelay + (schedulerFirst ? 0 : -1);
                 timeSinceLastHarvest = 0;
+            }
+            for (KelpPlant[] group : kelpPlants) {
+                for (int i = 0; i < randomTickSpeed; i ++) {
+                    final int rn = random.nextInt(SECTION_SIZE);
+                    final KelpPlant kelpPlant = rn < SECTION_SURFACE_SIZE ? group[rn] : null;
+                    if (kelpPlant != null) kelpPlant.tick(time, random);
+                }
             }
             final long timeMillis = System.currentTimeMillis();
             if (timeMillis - lastPrint > 5000) {
@@ -75,11 +78,14 @@ public class SimulationSession {
             }
         }
         log(String.format("Done. %.1f hours (%d gt), time elapsed: %.1fs", testLength / 20.0 / 60.0 / 60.0, testLength, (System.currentTimeMillis() - startTime) / 1000.0));
-        return Arrays.stream(kelpPlants)
-                .flatMap(Arrays::stream)
-                .filter(Objects::nonNull)
-                .mapToLong(kelpPlant -> kelpPlant.getTotal() + (schedulerFirst && kelpPlant.isGrownLastTick() ? -1 : 0))
-                .summaryStatistics();
+        return new SimulationResult(
+                Arrays.stream(kelpPlants)
+                        .flatMap(Arrays::stream)
+                        .filter(Objects::nonNull)
+                        .mapToLong(kelpPlant -> kelpPlant.getTotal() + (schedulerFirst ? -kelpPlant.getGrownLastTick() : 0))
+                        .summaryStatistics(),
+                harvestStream.build().summaryStatistics()
+        );
     }
 
     private void log(String message) {

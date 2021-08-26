@@ -18,6 +18,7 @@ public class Config {
     static final long testLength;
     static final int[] harvestPeriod;
     static final int[] heightLimit;
+    static final String[] implArgs;
 
     static {
         final Properties properties = new Properties();
@@ -29,7 +30,7 @@ public class Config {
 
         randomTickSpeed = Integer.parseInt(getProperty(properties, "randomTickSpeed", "3"));
         schedulerFirst = Boolean.parseBoolean(getProperty(properties, "schedulerFirst", "true"));
-        waterFlowDelay = Integer.parseInt(getProperty(properties, "waterFlowDelay", "5"));
+        waterFlowDelay = Integer.parseInt(getProperty(properties, "waterFlowDelay", "8"));
         kelpCount = Integer.parseInt(getProperty(properties, "kelpCount", String.valueOf(Short.MAX_VALUE)));
         testLength = Long.parseLong(getProperty(properties, "testLength", String.valueOf(72_000_000)));
         harvestPeriod = Arrays.stream(getProperty(properties, "harvestPeriod", "600,1200,1800,2400,3000,3600").split(","))
@@ -38,6 +39,7 @@ public class Config {
         heightLimit = Arrays.stream(getProperty(properties, "heightLimit", "8,12,16,20,24").split(","))
                 .mapToInt(Integer::parseInt)
                 .toArray();
+        implArgs = getProperty(properties, "implArgs", "java").split(",");
 
         try (Writer writer = Files.newBufferedWriter(Path.of(".", "config.properties"), StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.CREATE)) {
             properties.store(writer, "KelpSimulator");
