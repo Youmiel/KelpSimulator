@@ -22,6 +22,7 @@ import static com.ishland.simulations.kelpsimulator.impl.opencl.CLUtil.getDevice
 import static org.lwjgl.opencl.CL10.CL_DEVICE_NAME;
 import static org.lwjgl.opencl.CL10.CL_DEVICE_VERSION;
 import static org.lwjgl.opencl.CL10.CL_DRIVER_VERSION;
+import static org.lwjgl.opencl.CL10.CL_MEM_READ_WRITE;
 import static org.lwjgl.opencl.CL10.CL_MEM_WRITE_ONLY;
 import static org.lwjgl.opencl.CL10.clBuildProgram;
 import static org.lwjgl.opencl.CL10.clCreateBuffer;
@@ -98,7 +99,7 @@ public class OpenCLSimulationSession implements Simulator {
             final int groupSize = (int) (testLength / harvestPeriod);
             final LongBuffer totalStorage = MemoryUtil.memCallocLong(kelpCount);
             final IntBuffer perHarvestStorage = MemoryUtil.memCallocInt(kelpCount * groupSize);
-            final long totalStoragePointer = clCreateBuffer(context.getContext(), CL_MEM_WRITE_ONLY, (long) kelpCount << 3, errCodeRet);
+            final long totalStoragePointer = clCreateBuffer(context.getContext(), CL_MEM_READ_WRITE, (long) kelpCount << 3, errCodeRet);
             checkCLError(errCodeRet);
             final long perHarvestStoragePointer = clCreateBuffer(context.getContext(), CL_MEM_WRITE_ONLY, ((long) kelpCount * groupSize) << 2, errCodeRet);
             checkCLError(errCodeRet);
@@ -143,6 +144,7 @@ public class OpenCLSimulationSession implements Simulator {
 
             // waiting
             log("Waiting for results");
+            checkCLError(clFlush(queue));
             checkCLError(oclEnqueueReadBuffer(queue, totalStoragePointer, true, 0, totalStorage, null, null));
             checkCLError(clEnqueueReadBuffer(queue, perHarvestStoragePointer, true, 0, perHarvestStorage, null, null));
 

@@ -65,7 +65,5 @@ __kernel void doWork(int randomTickSpeed, short schedulerFirst,
     total -= grownLastTick;
   }
   totalStorage[id] = total;
-  totalStorage[id] = total;
-  totalStorage[id] = total;
   return;
 }
