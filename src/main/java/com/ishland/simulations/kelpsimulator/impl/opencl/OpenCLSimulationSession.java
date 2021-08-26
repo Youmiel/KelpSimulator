@@ -88,6 +88,7 @@ public class OpenCLSimulationSession implements Simulator {
         final long platform = platformDevices.platform();
         final long device = platformDevices.devices()[this.device];
         log(String.format("Using device: %s version %s - %s", getDeviceInfoStringUTF8(device, CL_DEVICE_NAME), getDeviceInfoStringUTF8(device, CL_DEVICE_VERSION), getDeviceInfoStringUTF8(device, CL_DRIVER_VERSION)));
+        final long startTime = System.nanoTime();
         try (final DeviceManager.OpenCLContext context = new DeviceManager.OpenCLContext(platform, device);
              final MemoryStack stack = MemoryStack.stackPush()) {
             IntBuffer errCodeRet = stack.callocInt(1);
@@ -95,8 +96,8 @@ public class OpenCLSimulationSession implements Simulator {
             // prepare storage
             log("Allocating memory resources");
             final int groupSize = (int) (testLength / harvestPeriod);
-            final LongBuffer totalStorage = MemoryUtil.memAllocLong(kelpCount);
-            final IntBuffer perHarvestStorage = MemoryUtil.memAllocInt(kelpCount * groupSize);
+            final LongBuffer totalStorage = MemoryUtil.memCallocLong(kelpCount);
+            final IntBuffer perHarvestStorage = MemoryUtil.memCallocInt(kelpCount * groupSize);
             final long totalStoragePointer = clCreateBuffer(context.getContext(), CL_MEM_WRITE_ONLY, (long) kelpCount << 3, errCodeRet);
             checkCLError(errCodeRet);
             final long perHarvestStoragePointer = clCreateBuffer(context.getContext(), CL_MEM_WRITE_ONLY, ((long) kelpCount * groupSize) << 2, errCodeRet);
@@ -149,8 +150,9 @@ public class OpenCLSimulationSession implements Simulator {
             log("Processing results");
             totalStorage.position(0);
             final LongStream.Builder totalStorageStream = LongStream.builder();
-            while (totalStorage.hasRemaining())
+            while (totalStorage.hasRemaining()) {
                 totalStorageStream.accept(totalStorage.get());
+            }
 
             perHarvestStorage.position(0);
             final IntStream.Builder perHarvestStream = IntStream.builder();
@@ -179,6 +181,8 @@ public class OpenCLSimulationSession implements Simulator {
         } catch (Throwable t) {
             t.printStackTrace();
             throw new RuntimeException(t);
+        } finally {
+            log(String.format("Done. %.1f hours (%d gt), time elapsed: %.1fms", testLength / 20.0 / 60.0 / 60.0, testLength, (System.nanoTime() - startTime) / 1_000_000.0));
         }
     }
 

@@ -25,6 +25,7 @@ __kernel void doWork(int randomTickSpeed, short schedulerFirst,
   ulong lastTick = 0;
   ulong grownLastTick = 0;
 
+  size_t calcTime = randomNumber(&seedStorage) % 4096;
   uint harvestedCount = 0;
   ulong timeSinceLastHarvest = 0;
   for (ulong time = 0; time < testLength; time++) {
@@ -37,29 +38,34 @@ __kernel void doWork(int randomTickSpeed, short schedulerFirst,
       height = 1;
       grownLastTick = 0;
       if (harvestedCount + 1 >= perHarvestSize) {
-          perHarvestStorage[id * perHarvestSize + perHarvestSize - 1] = 1 << 31;
+        perHarvestStorage[id * perHarvestSize + perHarvestSize - 1] = 1 << 31;
       } else {
-          perHarvestStorage[id * perHarvestSize + (harvestedCount++)] =
-          harvestedCount;
+        perHarvestStorage[id * perHarvestSize + (harvestedCount++)] =
+            harvestedHeight;
       }
       time += waterFlowDelay + (schedulerFirst ? 0 : -1);
       timeSinceLastHarvest = 0;
       continue;
     }
     grownLastTick = 0;
-    for (ushort i = 0; i < randomTickSpeed; i++) {
-      if (height < maxHeight && randomNumber(&seedStorage) % 4096 == 0 &&
-          randomNumber(&seedStorage) % 100 < 14) {
-        height++;
-        grownLastTick++;
+    if (time % 4096 == calcTime) {
+      for (ushort i = 0; i < randomTickSpeed; i++) {
+        if (height < maxHeight && randomNumber(&seedStorage) % 100 < 14) {
+          height++;
+          grownLastTick++;
+        }
       }
     }
   }
   if (harvestedCount < perHarvestSize) {
-      perHarvestStorage[id * perHarvestSize + perHarvestSize - 1] = harvestedCount;
+    perHarvestStorage[id * perHarvestSize + perHarvestSize - 1] =
+        harvestedCount - 1;
   }
   if (schedulerFirst) {
     total -= grownLastTick;
   }
   totalStorage[id] = total;
+  totalStorage[id] = total;
+  totalStorage[id] = total;
+  return;
 }
