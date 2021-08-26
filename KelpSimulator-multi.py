@@ -21,6 +21,8 @@ import os
 class Kelp():
     growth_probability = 0.14
     seletct_probability = 1/(16**3)
+    segement_size = 16**2
+    subchunk_size = 16**3
     def __init__(self) -> None:
         self.init()
 
@@ -29,7 +31,7 @@ class Kelp():
         self.start_age = self.age
 
     def tick(self):
-        if self.age < 25 and random.random() < (Kelp.growth_probability * Kelp.seletct_probability):
+        if self.age < 25 and random.random() < Kelp.growth_probability:
             self.age += 1
 
     def harvest(self) -> int:
@@ -59,8 +61,6 @@ class Kelp():
 # gametick: int
 # ```
 # 
-# %% [markdown]
-# ```
 
 # %%
 config = {
@@ -81,8 +81,8 @@ config = {
         'values': [10, 20]
     },
     'grow_after_tick': False,
-    'kelp_count': 10000,
-    'test_time': 72000000,
+    'kelp_count': 1000,
+    'test_time': 72000,
     'keys': ['harvest_period','height_limit']
 }
 # supported types are 'continuous' and 'list'
@@ -105,7 +105,8 @@ def load_config(path: str):
     except:
         with open(path,'w') as file:
             json.dump(config, file, indent=4)
-    pass
+        print("Config not found, automatically generate default.")
+        exit()
 
 def translate_list(val: dict) -> list:
     if val['type'] == 'list':
@@ -145,7 +146,7 @@ def init():
 
 # %%
 def write_csv(result:dict, config: dict, key_3):
-    path = './multiProcessResults/' + config['keys'][2] + '=' + str(key_3) +            '<' + config['keys'][0] + ','+ config['keys'][1] + '>' +        time.ctime()
+    path = './multiProcessResults/' + config['keys'][2] + '=' + str(key_3) +            '[' + config['keys'][0] + ','+ config['keys'][1] + ']' +        str(int(time.time()))
     with open(path + '.csv','w',newline='') as csvfile:
         writer = csv.writer(csvfile)
         writer.writerow([config['keys'][1] + '|' + config['keys'][0]] +            list(config[config['keys'][0]]))
@@ -204,27 +205,38 @@ def simulate(config: dict, task_name: str) -> tuple:
 def tick(gametick: int, counters: dict, config: dict, task_name: str):
     global kelps
     if(config['grow_after_tick']):
+        counters['harvest'] -= 1 # harvest counter
         if counters['empty'] > 0:
             counters['empty'] -= 1 # scheduled tick
-        counters['harvest'] -= 1 # harvest counter
         if counters['empty'] <= 0:
-            for i in range(config['tick_speed']):
-                for kelp in kelps:
-                    kelp.tick() # grow(random tick)
+            for i in range(config['tick_speed']):  # grow(random tick)
+                selection = []
+                for segement in range(int(config['kelp_count'] / Kelp.segement_size) + 1):
+                    index = random.randrange(0, Kelp.subchunk_size) + segement * Kelp.segement_size
+                    if index < ((segement + 1) * Kelp.segement_size) and index < config['kelp_count']:
+                        selection.append(kelps[index])
+                for kelp in selection:
+                    kelp.tick()
     else:
+        counters['harvest'] -= 1 # harvest counter
         if counters['empty'] <= 0:
-            for i in range(config['tick_speed']):
-                for kelp in kelps:
-                    kelp.tick() # grow(random tick)
+            for i in range(config['tick_speed']):  # grow(random tick)
+                selection = []
+                for segement in range(int(config['kelp_count'] / Kelp.segement_size) + 1):
+                    index = random.randrange(0, Kelp.subchunk_size) + segement * Kelp.segement_size
+                    if index < ((segement + 1) * Kelp.segement_size) and index < config['kelp_count']:
+                        selection.append(kelps[index])
+                for kelp in selection:
+                    kelp.tick()
         if counters['empty'] > 0:
             counters['empty'] -= 1 # scheduled tick
-        counters['harvest'] -= 1 # harvest counter
     if counters['harvest'] <= 0:
         items = 0
         for kelp in kelps:
             items += min(kelp.harvest(), config['height_limit'])
         counters['item'] += items
         counters['harvest'] = config['harvest_period'] # piston
+        counters['empty'] = config['empty_tick']
     if ((gametick + 1) % 72000) == 0:
         lo = multiprocessing.Lock()
         lo.acquire()

@@ -18,6 +18,8 @@ import decimal
 class Kelp():
     growth_probability = 0.14
     seletct_probability = 1/(16**3)
+    segement_size = 16**2
+    subchunk_size = 16**3
     def __init__(self) -> None:
         self.init()
 
@@ -26,7 +28,7 @@ class Kelp():
         self.start_age = self.age
 
     def tick(self):
-        if self.age < 25 and random.random() < (Kelp.growth_probability * Kelp.seletct_probability):
+        if self.age < 25 and random.random() < Kelp.growth_probability:
             self.age += 1
 
     def harvest(self) -> int:
@@ -165,7 +167,7 @@ def start():
             writer = csv.writer(csvfile)
             writer.writerow([config['keys'][1] + '|' + config['keys'][0]] +                list(config[config['keys'][0]]))
             for key_2 in config[config['keys'][1]]:
-                writer.writerows([key_2] + result[key_2])
+                writer.writerow([key_2] + result[key_2])
             
         
             
@@ -185,36 +187,47 @@ def simulate(config: dict):
     }
     for gt in range(config['test_time']):
         tick(gt, counters, config)    
-    eff = decimal.Decimal(counters['item']) / (config['kelp_count'] * config['test_time'] / 72000)
+    eff = decimal.Decimal(counters['item']) / decimal.Decimal(config['kelp_count'] * config['test_time'] / 72000)
     temp_result.append((config, eff))
 
 def tick(gametick: int, counters: dict, config: dict):
     global kelps
     if(config['grow_after_tick']):
+        counters['harvest'] -= 1 # harvest counter
         if counters['empty'] > 0:
             counters['empty'] -= 1 # scheduled tick
-        counters['harvest'] -= 1 # harvest counter
         if counters['empty'] <= 0:
-            for i in range(config['tick_speed']):
-                for kelp in kelps:
-                    kelp.tick() # grow(random tick)
+            for i in range(config['tick_speed']):  # grow(random tick)
+                selection = []
+                for segement in range(int(config['kelp_count'] / Kelp.segement_size) + 1):
+                    index = random.randrange(0, Kelp.subchunk_size) + segement * Kelp.segement_size
+                    if index < ((segement + 1) * Kelp.segement_size) and index < config['kelp_count']:
+                        selection.append(kelps[index])
+                for kelp in selection:
+                    kelp.tick()
     else:
+        counters['harvest'] -= 1 # harvest counter
         if counters['empty'] <= 0:
-            for i in range(config['tick_speed']):
-                for kelp in kelps:
-                    kelp.tick() # grow(random tick)
+            for i in range(config['tick_speed']):  # grow(random tick)
+                selection = []
+                for segement in range(int(config['kelp_count'] / Kelp.segement_size) + 1):
+                    index = random.randrange(0, Kelp.subchunk_size) + segement * Kelp.segement_size
+                    if index < ((segement + 1) * Kelp.segement_size) and index < config['kelp_count']:
+                        selection.append(kelps[index])
+                for kelp in selection:
+                    kelp.tick()
         if counters['empty'] > 0:
             counters['empty'] -= 1 # scheduled tick
-        counters['harvest'] -= 1 # harvest counter
+
     if counters['harvest'] <= 0:
         items = 0
         for kelp in kelps:
             items += min(kelp.harvest(), config['height_limit'])
         counters['item'] += items
         counters['harvest'] = config['harvest_period'] # piston
+        counters['empty'] = config['empty_tick']
     if ((gametick + 1) % 72000) == 0:
-        print('Warped ' + str(int((gametick + 1) / 72000)) + ' hour(s)..')
-    
+        print('Warped ' + str(int((gametick + 1) / 72000)) + ' hour(s)..' + str(counters['item']))
 
 
 # %%

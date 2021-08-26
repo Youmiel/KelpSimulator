@@ -3,11 +3,7 @@
     "harvest_period": {
         "type": "list",
         "values": [
-            5120,
-            12000,
-            24000,
-            48000,
-            96000
+            10
         ]
     },
     "empty_tick": {
@@ -23,8 +19,8 @@
         ]
     },
     "grow_after_tick": false,
-    "kelp_count": 3000,
-    "test_time": 1800000,
+    "kelp_count": 100,
+    "test_time": 7200000,
     "keys": [
         "harvest_period",
         "height_limit"
