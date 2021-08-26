@@ -29,17 +29,15 @@ public class Main {
                 int heightLimit = Config.heightLimit[j];
                 int finalI = i;
                 int finalJ = j;
-                futures.add(CompletableFuture.runAsync(() -> {
-                    final Simulator session;
-                    if (Config.implArgs[0].equals("java")) {
-                        session = new JavaSimulationSession(Config.randomTickSpeed, Config.schedulerFirst, Config.waterFlowDelay, Config.kelpCount, Config.testLength, harvestPeriod, heightLimit);
-                    } else if (Config.implArgs[0].equals("opencl")) {
-                        session = new OpenCLSimulationSession(Config.randomTickSpeed, Config.schedulerFirst, Config.waterFlowDelay, Config.kelpCount, Config.testLength, harvestPeriod, heightLimit, Integer.parseInt(Config.implArgs[1]), Integer.parseInt(Config.implArgs[2]));
-                    } else {
-                        throw new IllegalArgumentException("Unknown impl");
-                    }
-                    output[finalI][finalJ] = session.runSimulation();
-                }));
+                final Simulator session;
+                if (Config.implArgs[0].equals("java")) {
+                    session = new JavaSimulationSession(Config.randomTickSpeed, Config.schedulerFirst, Config.waterFlowDelay, Config.kelpCount, Config.testLength, harvestPeriod, heightLimit);
+                } else if (Config.implArgs[0].equals("opencl")) {
+                    session = new OpenCLSimulationSession(Config.randomTickSpeed, Config.schedulerFirst, Config.waterFlowDelay, Config.kelpCount, Config.testLength, harvestPeriod, heightLimit, Integer.parseInt(Config.implArgs[1]), Integer.parseInt(Config.implArgs[2]));
+                } else {
+                    throw new IllegalArgumentException("Unknown impl");
+                }
+                output[finalI][finalJ] = session.runSimulation();
             }
         }
         CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new)).join();

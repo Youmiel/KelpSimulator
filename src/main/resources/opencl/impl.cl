@@ -11,7 +11,8 @@ __kernel void doWork(int randomTickSpeed, short schedulerFirst,
                      int harvestPeriod, int heightLimit, int perHarvestSize,
                      ulong seed, __global long *totalStorage,
                      __global int *perHarvestStorage) {
-  int id = get_global_id(0);
+  size_t id = get_global_id(0);
+  // if (id >= kelpCount) return;
 
   __private ulong seedStorage = seed;
 
@@ -20,7 +21,7 @@ __kernel void doWork(int randomTickSpeed, short schedulerFirst,
   short maxHeight = randomNumber(&seedStorage) % 25 + 2;
   if (maxHeight > heightLimit)
     maxHeight = heightLimit;
-  ulong total;
+  long total;
   ulong lastTick = 0;
   ulong grownLastTick = 0;
 
@@ -35,7 +36,7 @@ __kernel void doWork(int randomTickSpeed, short schedulerFirst,
       total += harvestedHeight;
       height = 1;
       grownLastTick = 0;
-      if (harvestedCount + 2 <= perHarvestSize) {
+      if (harvestedCount + 1 >= perHarvestSize) {
           perHarvestStorage[id * perHarvestSize + perHarvestSize - 1] = 1 << 31;
       } else {
           perHarvestStorage[id * perHarvestSize + (harvestedCount++)] =

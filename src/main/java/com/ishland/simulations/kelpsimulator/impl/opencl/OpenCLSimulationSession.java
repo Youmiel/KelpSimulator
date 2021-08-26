@@ -5,6 +5,7 @@ import com.ishland.simulations.kelpsimulator.impl.Simulator;
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.opencl.CL11;
 import org.lwjgl.system.MemoryStack;
+import org.lwjgl.system.MemoryUtil;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -86,7 +87,7 @@ public class OpenCLSimulationSession implements Simulator {
         final DeviceManager.PlatformDevices platformDevices = DeviceManager.validDevices.get(platform);
         final long platform = platformDevices.platform();
         final long device = platformDevices.devices()[this.device];
-        log(String.format("Using device: %s version %s - %s\n", getDeviceInfoStringUTF8(device, CL_DEVICE_NAME), getDeviceInfoStringUTF8(device, CL_DEVICE_VERSION), getDeviceInfoStringUTF8(device, CL_DRIVER_VERSION)));
+        log(String.format("Using device: %s version %s - %s", getDeviceInfoStringUTF8(device, CL_DEVICE_NAME), getDeviceInfoStringUTF8(device, CL_DEVICE_VERSION), getDeviceInfoStringUTF8(device, CL_DRIVER_VERSION)));
         try (final DeviceManager.OpenCLContext context = new DeviceManager.OpenCLContext(platform, device);
              final MemoryStack stack = MemoryStack.stackPush()) {
             IntBuffer errCodeRet = stack.callocInt(1);
@@ -94,30 +95,20 @@ public class OpenCLSimulationSession implements Simulator {
             // prepare storage
             log("Allocating memory resources");
             final int groupSize = (int) (testLength / harvestPeriod);
-            final LongBuffer totalStorage = stack.mallocLong(kelpCount);
-            final IntBuffer perHarvestStorage = stack.callocInt(kelpCount * groupSize);
-            final long totalStoragePointer = oclCreateBuffer(context.getContext(), CL_MEM_WRITE_ONLY, totalStorage, errCodeRet);
+            final LongBuffer totalStorage = MemoryUtil.memAllocLong(kelpCount);
+            final IntBuffer perHarvestStorage = MemoryUtil.memAllocInt(kelpCount * groupSize);
+            final long totalStoragePointer = clCreateBuffer(context.getContext(), CL_MEM_WRITE_ONLY, (long) kelpCount << 3, errCodeRet);
             checkCLError(errCodeRet);
-            final long perHarvestStoragePointer = clCreateBuffer(context.getContext(), CL_MEM_WRITE_ONLY, perHarvestStorage, errCodeRet);
+            final long perHarvestStoragePointer = clCreateBuffer(context.getContext(), CL_MEM_WRITE_ONLY, ((long) kelpCount * groupSize) << 2, errCodeRet);
             checkCLError(errCodeRet);
 
             // prepare program
             log("Preparing program");
             final String source;
-            try (InputStream in = OpenCLSimulationSession.class.getResourceAsStream("impl.cl")) {
+            try (InputStream in = OpenCLSimulationSession.class.getClassLoader().getResourceAsStream("opencl/impl.cl")) {
                 if (in == null) throw new FileNotFoundException("impl.cl");
                 source = new String(in.readAllBytes());
             } catch (IOException e) {
-                try {
-                    checkCLError(clReleaseMemObject(totalStoragePointer));
-                } catch (Throwable t) {
-                    e.addSuppressed(t);
-                }
-                try {
-                    checkCLError(clReleaseMemObject(perHarvestStoragePointer));
-                } catch (Throwable t) {
-                    e.addSuppressed(t);
-                }
                 throw new RuntimeException(e);
             }
             final long program = clCreateProgramWithSource(context.getContext(), source, errCodeRet);
@@ -144,10 +135,9 @@ public class OpenCLSimulationSession implements Simulator {
             log("Submitting to OpenCL");
             final long queue = clCreateCommandQueue(context.getContext(), context.getDevice(), NULL, errCodeRet);
             checkCLError(errCodeRet);
-            final LongBuffer globalWorkSize = stack.mallocLong(1);
-            globalWorkSize.put(0, kelpCount);
-            final PointerBuffer pointerBuffer = stack.mallocPointer(1);
-            pointerBuffer.put(globalWorkSize);
+            final PointerBuffer pointerBuffer = stack.callocPointer(1);
+            pointerBuffer.put(kelpCount);
+            pointerBuffer.position(0);
             checkCLError(clEnqueueNDRangeKernel(queue, kernel, 1, null, pointerBuffer, null, null, null));
 
             // waiting
@@ -165,7 +155,7 @@ public class OpenCLSimulationSession implements Simulator {
             perHarvestStorage.position(0);
             final IntStream.Builder perHarvestStream = IntStream.builder();
             for (int group = 0; group < kelpCount; group ++) {
-                final int size = perHarvestStorage.get(group * groupSize + kelpCount - 1);
+                final int size = perHarvestStorage.get(group * groupSize + groupSize - 1);
                 if (size == 1 << 31) {
                     log(String.format("Group %d encountered a OutOfBounds issue, ignoring group", size));
                 }
@@ -182,8 +172,13 @@ public class OpenCLSimulationSession implements Simulator {
             checkCLError(clReleaseProgram(program));
             checkCLError(clReleaseMemObject(totalStoragePointer));
             checkCLError(clReleaseMemObject(perHarvestStoragePointer));
+            MemoryUtil.memFree(totalStorage);
+            MemoryUtil.memFree(perHarvestStorage);
 
             return new SimulationResult(totalStorageStream.build().summaryStatistics(), perHarvestStream.build().summaryStatistics());
+        } catch (Throwable t) {
+            t.printStackTrace();
+            throw new RuntimeException(t);
         }
     }
 
@@ -191,14 +186,14 @@ public class OpenCLSimulationSession implements Simulator {
         if (CHECKS) {
             checkSafe(errcode_ret, 1);
         }
-        return CL11.nclCreateBuffer(context, flags, (long) host_ptr.remaining() << 4, memAddress(host_ptr), memAddressSafe(errcode_ret));
+        return CL11.nclCreateBuffer(context, flags, (long) host_ptr.remaining() << 3, memAddress(host_ptr), memAddressSafe(errcode_ret));
     }
 
     private static int oclEnqueueReadBuffer(long command_queue, long buffer, boolean blocking_read, long offset, LongBuffer ptr, PointerBuffer event_wait_list, PointerBuffer event) {
         if (CHECKS) {
             checkSafe(event, 1);
         }
-        return nclEnqueueReadBuffer(command_queue, buffer, blocking_read ? 1 : 0, offset, Integer.toUnsignedLong(ptr.remaining()) << 4, memAddress(ptr), remainingSafe(event_wait_list), memAddressSafe(event_wait_list), memAddressSafe(event));
+        return nclEnqueueReadBuffer(command_queue, buffer, blocking_read ? 1 : 0, offset, Integer.toUnsignedLong(ptr.remaining()) << 3, memAddress(ptr), remainingSafe(event_wait_list), memAddressSafe(event_wait_list), memAddressSafe(event));
     }
 
     private void log(String message) {
