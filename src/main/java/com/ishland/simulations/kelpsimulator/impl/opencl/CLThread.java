@@ -34,6 +34,10 @@ public class CLThread extends Thread {
 
     final Queue<CallBack> callBacks = new ConcurrentLinkedQueue<>();
 
+    {
+        this.setName("OpenCL Thread");
+    }
+
     @Override
     public void run() {
         final DeviceManager.PlatformDevices platformDevices = DeviceManager.validDevices.get(platformOrdinal);

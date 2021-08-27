@@ -64,7 +64,13 @@ public class Main {
                     final int heightLimit = Config.heightLimit[j];
                     final double lengthHours = Config.testLength / 20.0 / 60.0 / 60.0;
                     final SimulationResult statistics = output[i][j].join();
-                    writer.writeRow(String.valueOf(Config.kelpCount), String.valueOf(lengthHours), String.valueOf(heightLimit), format.format(harvestPeriod / 20.0), String.valueOf(statistics.total().getSum()), format.format(statistics.total().getSum() / lengthHours), format.format(statistics.total().getAverage() / lengthHours), format.format(statistics.perHarvest().getAverage() * Config.kelpCount), format.format(statistics.perHarvest().getAverage()));
+                    if (!useOpenCL) {
+                        writer.writeRow(String.valueOf(Config.kelpCount), String.valueOf(lengthHours), String.valueOf(heightLimit), format.format(harvestPeriod / 20.0), String.valueOf(statistics.total().getSum()), format.format(statistics.total().getSum() / lengthHours), format.format(statistics.total().getAverage() / lengthHours), format.format(statistics.perHarvest().getAverage() * Config.kelpCount), format.format(statistics.perHarvest().getAverage()));
+                    } else {
+                        final double totalEveryHarvest = statistics.total().getSum() / (Config.testLength / (double) harvestPeriod);
+                        final double unitEveryHarvest = statistics.total().getAverage() / (Config.testLength / (double) harvestPeriod);
+                        writer.writeRow(String.valueOf(Config.kelpCount), String.valueOf(lengthHours), String.valueOf(heightLimit), format.format(harvestPeriod / 20.0), String.valueOf(statistics.total().getSum()), format.format(statistics.total().getSum() / lengthHours), format.format(statistics.total().getAverage() / lengthHours), format.format(totalEveryHarvest), format.format(unitEveryHarvest));
+                    }
                 }
             System.out.println("Results saved at " + Path.of(".", "output.csv"));
         } catch (IOException e) {

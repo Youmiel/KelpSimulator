@@ -29,7 +29,8 @@ public class JavaSimulationSession implements Simulator {
 
     public JavaSimulationSession(int randomTickSpeed, boolean schedulerFirst, int waterFlowDelay, int kelpCount, long testLength, int harvestPeriod, int heightLimit) {
         this.randomTickSpeed = randomTickSpeed;
-        this.schedulerFirst = schedulerFirst;
+        if (schedulerFirst) System.err.println("Forcing schedulerFirst to false with java simulation implementation");
+        this.schedulerFirst = false;
         this.waterFlowDelay = waterFlowDelay;
         this.kelpCount = kelpCount;
         this.testLength = testLength;
