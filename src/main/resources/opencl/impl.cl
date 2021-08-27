@@ -1,5 +1,5 @@
 uint randomNumber(ulong *seed_ptr) {
-  ulong seed = *seed_ptr + get_global_id(0);
+  ulong seed = *seed_ptr;
   seed = (seed * 0x5DEECE66DL + 0xBL) & ((1L << 48) - 1);
   uint result = seed >> 16;
   *seed_ptr = seed;
@@ -14,24 +14,26 @@ __kernel void doWork(int randomTickSpeed, short schedulerFirst,
   size_t id = get_global_id(0);
   // if (id >= kelpCount) return;
 
-  __private ulong seedStorage = seed;
+  __private ulong seedStorage = seed + id;
 
   // Status of kelp
   short height = 1;
   short maxHeight = randomNumber(&seedStorage) % 25 + 2;
   if (maxHeight > heightLimit)
     maxHeight = heightLimit;
-  long total;
+  long total = 0;
   ulong lastTick = 0;
   ulong grownLastTick = 0;
 
   size_t calcTime = randomNumber(&seedStorage) % 4096;
   uint harvestedCount = 0;
   ulong timeSinceLastHarvest = 0;
+  ulong timeSinceLastGrow = calcTime;
+  totalStorage[id] = 0;
   for (ulong time = 0; time < testLength; time++) {
     timeSinceLastHarvest++;
     if (timeSinceLastHarvest >= harvestPeriod) {
-      if (schedulerFirst && grownLastTick != 0)
+      if (schedulerFirst != 0 && grownLastTick != 0)
         height -= grownLastTick;
       short harvestedHeight = height - 1;
       total += harvestedHeight;
@@ -43,25 +45,37 @@ __kernel void doWork(int randomTickSpeed, short schedulerFirst,
         perHarvestStorage[id * perHarvestSize + (harvestedCount++)] =
             harvestedHeight;
       }
-      time += waterFlowDelay + (schedulerFirst ? 0 : -1);
+      time += waterFlowDelay + (schedulerFirst != 0 ? 0 : -1);
       timeSinceLastHarvest = 0;
       continue;
     }
     grownLastTick = 0;
-    if (time % 4096 == calcTime) {
+    timeSinceLastGrow ++;
+    if (timeSinceLastGrow >= 4096) {
       for (ushort i = 0; i < randomTickSpeed; i++) {
         if (height < maxHeight && randomNumber(&seedStorage) % 100 < 14) {
           height++;
           grownLastTick++;
         }
       }
+      timeSinceLastGrow = 0;
+    }
+    // optimize simulation
+    long timeBeforeGrow = 4096 - timeSinceLastGrow;
+    long timeBeforeHarvest = harvestPeriod - timeSinceLastHarvest;
+    long skipTicks = (timeBeforeGrow < timeBeforeHarvest ? timeBeforeGrow : timeBeforeHarvest) - 2;
+    if (skipTicks > 1) {
+      time += skipTicks;
+      timeSinceLastHarvest += skipTicks;
+      timeSinceLastGrow += skipTicks;
+      grownLastTick = 0;
     }
   }
   if (harvestedCount < perHarvestSize) {
     perHarvestStorage[id * perHarvestSize + perHarvestSize - 1] =
         harvestedCount - 1;
   }
-  if (schedulerFirst) {
+  if (schedulerFirst != 0) {
     total -= grownLastTick;
   }
   totalStorage[id] = total;

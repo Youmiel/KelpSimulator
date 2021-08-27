@@ -31,6 +31,7 @@ import static org.lwjgl.opencl.CL10.clCreateKernel;
 import static org.lwjgl.opencl.CL10.clCreateProgramWithSource;
 import static org.lwjgl.opencl.CL10.clEnqueueNDRangeKernel;
 import static org.lwjgl.opencl.CL10.clEnqueueReadBuffer;
+import static org.lwjgl.opencl.CL10.clFinish;
 import static org.lwjgl.opencl.CL10.clFlush;
 import static org.lwjgl.opencl.CL10.clReleaseCommandQueue;
 import static org.lwjgl.opencl.CL10.clReleaseKernel;
@@ -97,9 +98,7 @@ public class OpenCLSimulationSession implements Simulator {
             // prepare storage
             log("Allocating memory resources");
             final int groupSize = (int) (testLength / harvestPeriod);
-            final LongBuffer totalStorage = MemoryUtil.memCallocLong(kelpCount);
-            final IntBuffer perHarvestStorage = MemoryUtil.memCallocInt(kelpCount * groupSize);
-            final long totalStoragePointer = clCreateBuffer(context.getContext(), CL_MEM_READ_WRITE, (long) kelpCount << 3, errCodeRet);
+            final long totalStoragePointer = clCreateBuffer(context.getContext(), CL_MEM_WRITE_ONLY, (long) kelpCount << 3, errCodeRet);
             checkCLError(errCodeRet);
             final long perHarvestStoragePointer = clCreateBuffer(context.getContext(), CL_MEM_WRITE_ONLY, ((long) kelpCount * groupSize) << 2, errCodeRet);
             checkCLError(errCodeRet);
@@ -144,7 +143,10 @@ public class OpenCLSimulationSession implements Simulator {
 
             // waiting
             log("Waiting for results");
+            final LongBuffer totalStorage = MemoryUtil.memAllocLong(kelpCount);
+            final IntBuffer perHarvestStorage = MemoryUtil.memAllocInt(kelpCount * groupSize);
             checkCLError(clFlush(queue));
+            checkCLError(clFinish(queue));
             checkCLError(oclEnqueueReadBuffer(queue, totalStoragePointer, true, 0, totalStorage, null, null));
             checkCLError(clEnqueueReadBuffer(queue, perHarvestStoragePointer, true, 0, perHarvestStorage, null, null));
 
