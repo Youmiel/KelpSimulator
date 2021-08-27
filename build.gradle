@@ -7,6 +7,9 @@ plugins {
 group 'com.ishland.simulations'
 version '1.0-SNAPSHOT'
 
+sourceCompatibility = JavaVersion.VERSION_11
+targetCompatibility = JavaVersion.VERSION_11
+
 repositories {
     mavenCentral()
 }

@@ -5,12 +5,15 @@ import org.lwjgl.Version;
 import org.lwjgl.opencl.CL;
 import org.lwjgl.opencl.CLCapabilities;
 import org.lwjgl.opencl.CLContextCallback;
+import org.lwjgl.system.Configuration;
 import org.lwjgl.system.MemoryStack;
+import org.lwjgl.system.Platform;
 
 import java.io.Closeable;
 import java.nio.IntBuffer;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.stream.LongStream;
@@ -143,7 +146,44 @@ public class DeviceManager {
         }
     }
 
-    public record PlatformDevices(long platform, long[] devices) {
+    public static final class PlatformDevices {
+        private final long platform;
+        private final long[] devices;
+
+        public PlatformDevices(long platform, long[] devices) {
+            this.platform = platform;
+            this.devices = devices;
+        }
+
+        public long platform() {
+            return platform;
+        }
+
+        public long[] devices() {
+            return devices;
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (obj == this) return true;
+            if (obj == null || obj.getClass() != this.getClass()) return false;
+            var that = (PlatformDevices) obj;
+            return this.platform == that.platform &&
+                    Objects.equals(this.devices, that.devices);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(platform, devices);
+        }
+
+        @Override
+        public String toString() {
+            return "PlatformDevices[" +
+                    "platform=" + platform + ", " +
+                    "devices=" + devices + ']';
+        }
+
     }
 
 }
