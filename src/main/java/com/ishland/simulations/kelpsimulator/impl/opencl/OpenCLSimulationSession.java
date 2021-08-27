@@ -14,7 +14,6 @@ import java.util.Arrays;
 import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.IntStream;
 
 import static com.ishland.simulations.kelpsimulator.impl.opencl.CLUtil.checkCLError;
 import static org.lwjgl.opencl.CL10.CL_COMPLETE;
@@ -23,7 +22,6 @@ import static org.lwjgl.opencl.CL10.CL_SUCCESS;
 import static org.lwjgl.opencl.CL10.clCreateBuffer;
 import static org.lwjgl.opencl.CL10.clCreateKernel;
 import static org.lwjgl.opencl.CL10.clEnqueueNDRangeKernel;
-import static org.lwjgl.opencl.CL10.clEnqueueReadBuffer;
 import static org.lwjgl.opencl.CL10.clFlush;
 import static org.lwjgl.opencl.CL10.clReleaseEvent;
 import static org.lwjgl.opencl.CL10.clReleaseKernel;
@@ -77,8 +75,6 @@ public class OpenCLSimulationSession implements Simulator {
             final int groupSize = (int) (testLength / harvestPeriod + 1);
             final long totalStoragePointer = clCreateBuffer(context.getContext(), CL_MEM_WRITE_ONLY, (long) kelpCount << 3, errCodeRet);
             checkCLError(errCodeRet);
-            final long perHarvestStoragePointer = clCreateBuffer(context.getContext(), CL_MEM_WRITE_ONLY, ((long) kelpCount * groupSize) << 2, errCodeRet);
-            checkCLError(errCodeRet);
 
             // prepare kernel
 //            log("Preparing kernel");
@@ -94,7 +90,6 @@ public class OpenCLSimulationSession implements Simulator {
             checkCLError(clSetKernelArg1i(kernel, 7, groupSize)); // per harvest size
             checkCLError(clSetKernelArg1l(kernel, 8, new Random().nextLong())); // seed
             checkCLError(clSetKernelArg1p(kernel, 9, totalStoragePointer));
-            checkCLError(clSetKernelArg1p(kernel, 10, perHarvestStoragePointer));
 
             // submit
 //            log("Submitting to OpenCL");
@@ -114,10 +109,8 @@ public class OpenCLSimulationSession implements Simulator {
                         try {
 //                            log("Reading results from OpenCL");
                             final LongBuffer totalStorage = MemoryUtil.memAllocLong(kelpCount);
-                            final IntBuffer perHarvestStorage = MemoryUtil.memAllocInt(kelpCount * groupSize);
                             checkCLError(clFlush(queue));
                             checkCLError(oclEnqueueReadBuffer(queue, totalStoragePointer, true, 0, totalStorage, null, null));
-                            checkCLError(clEnqueueReadBuffer(queue, perHarvestStoragePointer, true, 0, perHarvestStorage, null, null));
 
                             // process result
 //                            log("Processing results");
@@ -127,28 +120,19 @@ public class OpenCLSimulationSession implements Simulator {
                                 totalStorageArray[totalStorage.position()] = totalStorage.get();
                             }
 
-                            perHarvestStorage.position(0);
-                            final IntStream.Builder perHarvestStream = IntStream.builder();
-                            for (int group = 0; group < kelpCount; group++) {
-                                final int size = perHarvestStorage.get(group * groupSize + groupSize - 1);
-                                if (size == 1 << 31) {
-                                    log(String.format("Group %d encountered a OutOfBounds issue, ignoring group", size));
-                                }
-                                for (int i = 0; i < size; i++) {
-                                    perHarvestStream.accept(perHarvestStorage.get(group * groupSize + i));
-                                }
-                            }
-
-                            future.complete(new SimulationResult(Arrays.stream(totalStorageArray).summaryStatistics(), perHarvestStream.build().summaryStatistics()));
+                            future.complete(new SimulationResult(
+                                    Arrays.stream(totalStorageArray).summaryStatistics(),
+                                    Arrays.stream(totalStorageArray)
+                                            .mapToInt(total -> (int) Math.round(total / (testLength / (double) harvestPeriod)))
+                                            .summaryStatistics()
+                            ));
 
 //                            log("Cleaning up");
                             checkCLError(clReleaseEvent(eventptr));
                             clEventCallback[0].free();
                             checkCLError(clReleaseKernel(kernel));
                             checkCLError(clReleaseMemObject(totalStoragePointer));
-                            checkCLError(clReleaseMemObject(perHarvestStoragePointer));
                             MemoryUtil.memFree(totalStorage);
-                            MemoryUtil.memFree(perHarvestStorage);
                         } catch (Throwable t) {
                             t.printStackTrace();
                             future.completeExceptionally(t);

@@ -52,11 +52,12 @@ public class Main {
         CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new)).join();
         System.out.printf("Simulation completed after %.1fs, writing results...\n", (System.currentTimeMillis() - startTime) / 1_000.0);
 
+        final boolean useOpenCL = Config.implArgs[0].equals("opencl");
         final DecimalFormat format = new DecimalFormat("0.###");
         try (CsvWriter writer = CsvWriter.builder()
                      .lineDelimiter(LineDelimiter.LF)
                      .build(Path.of(".", "output.csv"), StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
-            writer.writeRow("Kelp count ", "Time (h) ", "Height limit ", "Harvest period (s) ", "Total ", "Total / hour ", "Unit / hour ", "Total / harvest ", "Unit / harvest ");
+            writer.writeRow("Kelp count ", "Time (h) ", "Height limit ", "Harvest period (s) ", "Total ", "Total / hour ", "Unit / hour ", "Total / harvest " + (useOpenCL ? "(approx.) " : ""), "Unit / harvest " + (useOpenCL ? "(approx.) " : ""));
             for (int i = 0; i < output.length; i ++)
                 for (int j = 0; j < output[i].length; j ++) {
                     final int harvestPeriod = Config.harvestPeriod[i];

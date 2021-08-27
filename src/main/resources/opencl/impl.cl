@@ -9,8 +9,7 @@ uint randomNumber(ulong *seed_ptr) {
 __kernel void doWork(int randomTickSpeed, int schedulerFirst,
                      int waterFlowDelay, int kelpCount, ulong testLength,
                      int harvestPeriod, int heightLimit, int perHarvestSize,
-                     ulong seed, __global long *totalStorage,
-                     __global int *perHarvestStorage) {
+                     ulong seed, __global long *totalStorage) {
   size_t id = get_global_id(0);
   // if (id >= kelpCount) return;
 
@@ -26,7 +25,6 @@ __kernel void doWork(int randomTickSpeed, int schedulerFirst,
   ulong grownLastTick = 0;
 
   size_t calcTime = randomNumber(&seedStorage) % 4096;
-  uint harvestedCount = 0;
   uint grownCount = 0;
   ulong timeSinceLastHarvest = 0;
   ulong timeSinceLastGrow = calcTime;
@@ -40,12 +38,6 @@ __kernel void doWork(int randomTickSpeed, int schedulerFirst,
       total += harvestedHeight;
       height = 1;
       grownLastTick = 0;
-      if (harvestedCount + 1 >= perHarvestSize) {
-        perHarvestStorage[id * perHarvestSize + perHarvestSize - 1] = 1 << 31;
-      } else {
-        perHarvestStorage[id * perHarvestSize + (harvestedCount++)] =
-            harvestedHeight;
-      }
       ulong extraWait = waterFlowDelay + ((schedulerFirst != 0) ? 0 : -1);
       time += extraWait;
       timeSinceLastHarvest = extraWait;
@@ -76,10 +68,6 @@ __kernel void doWork(int randomTickSpeed, int schedulerFirst,
       timeSinceLastGrow += skipTicks;
       grownLastTick = 0;
     }
-  }
-  if (harvestedCount < perHarvestSize) {
-    perHarvestStorage[id * perHarvestSize + perHarvestSize - 1] =
-        harvestedCount - 1;
   }
   if (schedulerFirst != 0) {
     total -= grownLastTick;
