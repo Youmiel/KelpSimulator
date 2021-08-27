@@ -3,7 +3,12 @@
     "harvest_period": {
         "type": "list",
         "values": [
-            10
+            600,
+            1200,
+            1800,
+            2400,
+            3000,
+            3600
         ]
     },
     "empty_tick": {
@@ -15,7 +20,11 @@
     "height_limit": {
         "type": "list",
         "values": [
-            3
+            7,
+            11,
+            15,
+            19,
+            23
         ]
     },
     "grow_after_tick": false,

@@ -2,10 +2,15 @@
     "process_count": 16,
     "tick_speed": 3,
     "harvest_period": {
-        "type": "continuous",
-        "start": 10,
-        "end": 72000,
-        "step": 600
+        "type": "list",
+        "values": [
+            600,
+            1200,
+            1800,
+            2400,
+            3000,
+            3600
+        ]
     },
     "empty_tick": {
         "type": "list",
@@ -14,10 +19,14 @@
         ]
     },
     "height_limit": {
-        "type": "continuous",
-        "start": 1,
-        "end": 26,
-        "step": 1
+        "type": "list",
+        "values": [
+            7,
+            11,
+            15,
+            19,
+            23
+        ]
     },
     "grow_after_tick": false,
     "kelp_count": 1024,
