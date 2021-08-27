@@ -97,7 +97,7 @@ public class OpenCLSimulationSession implements Simulator {
 
             // prepare storage
             log("Allocating memory resources");
-            final int groupSize = (int) (testLength / harvestPeriod);
+            final int groupSize = (int) (testLength / harvestPeriod + 1);
             final long totalStoragePointer = clCreateBuffer(context.getContext(), CL_MEM_WRITE_ONLY, (long) kelpCount << 3, errCodeRet);
             checkCLError(errCodeRet);
             final long perHarvestStoragePointer = clCreateBuffer(context.getContext(), CL_MEM_WRITE_ONLY, ((long) kelpCount * groupSize) << 2, errCodeRet);
@@ -121,7 +121,7 @@ public class OpenCLSimulationSession implements Simulator {
             final long kernel = clCreateKernel(program, "doWork", errCodeRet);
             checkCLError(errCodeRet);
             checkCLError(clSetKernelArg1i(kernel, 0, randomTickSpeed));
-            checkCLError(clSetKernelArg1s(kernel, 1, (short) (schedulerFirst ? 1 : 0)));
+            checkCLError(clSetKernelArg1i(kernel, 1, schedulerFirst ? 1 : 0));
             checkCLError(clSetKernelArg1i(kernel, 2, waterFlowDelay));
             checkCLError(clSetKernelArg1i(kernel, 3, kelpCount));
             checkCLError(clSetKernelArg1l(kernel, 4, testLength));

@@ -61,8 +61,10 @@ public class JavaSimulationSession implements Simulator {
                         if (plant != null) harvestStream.accept(plant.harvest(schedulerFirst));
                     }
                 }
-                time += waterFlowDelay + (schedulerFirst ? 0 : -1);
-                timeSinceLastHarvest = 0;
+                final int extraWait = waterFlowDelay + (schedulerFirst ? 0 : -1);
+                time += extraWait;
+                timeSinceLastHarvest = extraWait;
+                continue;
             }
             for (KelpPlant[] group : kelpPlants) {
                 for (int i = 0; i < randomTickSpeed; i ++) {

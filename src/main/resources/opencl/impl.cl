@@ -6,7 +6,7 @@ uint randomNumber(ulong *seed_ptr) {
   return result;
 }
 
-__kernel void doWork(int randomTickSpeed, short schedulerFirst,
+__kernel void doWork(int randomTickSpeed, int schedulerFirst,
                      int waterFlowDelay, int kelpCount, ulong testLength,
                      int harvestPeriod, int heightLimit, int perHarvestSize,
                      ulong seed, __global long *totalStorage,
@@ -45,9 +45,9 @@ __kernel void doWork(int randomTickSpeed, short schedulerFirst,
         perHarvestStorage[id * perHarvestSize + (harvestedCount++)] =
             harvestedHeight;
       }
-      time += waterFlowDelay + (schedulerFirst != 0 ? 0 : -1);
-      timeSinceLastHarvest = 0;
-      continue;
+      ulong extraWait = waterFlowDelay + ((schedulerFirst != 0) ? 0 : -1);
+      time += extraWait;
+      timeSinceLastHarvest = extraWait;
     }
     grownLastTick = 0;
     timeSinceLastGrow ++;
