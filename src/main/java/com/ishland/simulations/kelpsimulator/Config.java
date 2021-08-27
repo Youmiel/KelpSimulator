@@ -16,9 +16,10 @@ public class Config {
     static final int waterFlowDelay;
     static final int kelpCount;
     static final long testLength;
+    static final long maxConcurrentTasks;
     static final int[] harvestPeriod;
     static final int[] heightLimit;
-    static final String[] implArgs;
+    public static final String[] implArgs;
 
     static {
         final Properties properties = new Properties();
@@ -40,6 +41,7 @@ public class Config {
                 .mapToInt(Integer::parseInt)
                 .toArray();
         implArgs = getProperty(properties, "implArgs", "java").split(",");
+        maxConcurrentTasks = Integer.parseInt(getProperty(properties, "maxConcurrentTasks", String.valueOf(Math.min(Runtime.getRuntime().availableProcessors(), 6))));
 
         try (Writer writer = Files.newBufferedWriter(Path.of(".", "config.properties"), StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.CREATE)) {
             properties.store(writer, "KelpSimulator");

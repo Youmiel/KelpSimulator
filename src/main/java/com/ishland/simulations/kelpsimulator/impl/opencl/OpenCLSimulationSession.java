@@ -4,43 +4,33 @@ import com.ishland.simulations.kelpsimulator.impl.SimulationResult;
 import com.ishland.simulations.kelpsimulator.impl.Simulator;
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.opencl.CL11;
+import org.lwjgl.opencl.CLEventCallback;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.system.MemoryUtil;
 
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.io.InputStream;
 import java.nio.IntBuffer;
 import java.nio.LongBuffer;
+import java.util.Arrays;
 import java.util.Random;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
-import java.util.stream.LongStream;
 
 import static com.ishland.simulations.kelpsimulator.impl.opencl.CLUtil.checkCLError;
-import static com.ishland.simulations.kelpsimulator.impl.opencl.CLUtil.getDeviceInfoStringUTF8;
-import static org.lwjgl.opencl.CL10.CL_DEVICE_NAME;
-import static org.lwjgl.opencl.CL10.CL_DEVICE_VERSION;
-import static org.lwjgl.opencl.CL10.CL_DRIVER_VERSION;
-import static org.lwjgl.opencl.CL10.CL_MEM_READ_WRITE;
+import static org.lwjgl.opencl.CL10.CL_COMPLETE;
 import static org.lwjgl.opencl.CL10.CL_MEM_WRITE_ONLY;
-import static org.lwjgl.opencl.CL10.clBuildProgram;
+import static org.lwjgl.opencl.CL10.CL_SUCCESS;
 import static org.lwjgl.opencl.CL10.clCreateBuffer;
-import static org.lwjgl.opencl.CL10.clCreateCommandQueue;
 import static org.lwjgl.opencl.CL10.clCreateKernel;
-import static org.lwjgl.opencl.CL10.clCreateProgramWithSource;
 import static org.lwjgl.opencl.CL10.clEnqueueNDRangeKernel;
 import static org.lwjgl.opencl.CL10.clEnqueueReadBuffer;
-import static org.lwjgl.opencl.CL10.clFinish;
 import static org.lwjgl.opencl.CL10.clFlush;
-import static org.lwjgl.opencl.CL10.clReleaseCommandQueue;
+import static org.lwjgl.opencl.CL10.clReleaseEvent;
 import static org.lwjgl.opencl.CL10.clReleaseKernel;
 import static org.lwjgl.opencl.CL10.clReleaseMemObject;
-import static org.lwjgl.opencl.CL10.clReleaseProgram;
 import static org.lwjgl.opencl.CL10.clSetKernelArg1i;
 import static org.lwjgl.opencl.CL10.clSetKernelArg1l;
 import static org.lwjgl.opencl.CL10.clSetKernelArg1p;
-import static org.lwjgl.opencl.CL10.clSetKernelArg1s;
 import static org.lwjgl.opencl.CL10.nclEnqueueReadBuffer;
 import static org.lwjgl.system.Checks.CHECKS;
 import static org.lwjgl.system.Checks.checkSafe;
@@ -55,10 +45,6 @@ public class OpenCLSimulationSession implements Simulator {
     private static final int SECTION_SURFACE_SIZE = 16 * 16;
     private static final AtomicInteger GLOBAL_SERIAL = new AtomicInteger(0);
 
-    static {
-
-    }
-
     private final int serial = GLOBAL_SERIAL.getAndIncrement();
     private final int randomTickSpeed;
     private final boolean schedulerFirst;
@@ -67,12 +53,11 @@ public class OpenCLSimulationSession implements Simulator {
     private final long testLength;
     private final int harvestPeriod;
     private final int heightLimit;
-    private final int platform;
-    private final int device;
 
     private final Random random = new Random();
+    private final CompletableFuture<SimulationResult> future = new CompletableFuture<>();
 
-    public OpenCLSimulationSession(int randomTickSpeed, boolean schedulerFirst, int waterFlowDelay, int kelpCount, long testLength, int harvestPeriod, int heightLimit, int platform, int device) {
+    public OpenCLSimulationSession(int randomTickSpeed, boolean schedulerFirst, int waterFlowDelay, int kelpCount, long testLength, int harvestPeriod, int heightLimit) {
         this.randomTickSpeed = randomTickSpeed;
         this.schedulerFirst = schedulerFirst;
         this.waterFlowDelay = waterFlowDelay;
@@ -80,44 +65,23 @@ public class OpenCLSimulationSession implements Simulator {
         this.testLength = testLength;
         this.harvestPeriod = harvestPeriod;
         this.heightLimit = heightLimit;
-        this.platform = platform;
-        this.device = device;
     }
 
-    @Override
-    public SimulationResult runSimulation() {
-        final DeviceManager.PlatformDevices platformDevices = DeviceManager.validDevices.get(platform);
-        final long platform = platformDevices.platform();
-        final long device = platformDevices.devices()[this.device];
-        log(String.format("Using device: %s version %s - %s", getDeviceInfoStringUTF8(device, CL_DEVICE_NAME), getDeviceInfoStringUTF8(device, CL_DEVICE_VERSION), getDeviceInfoStringUTF8(device, CL_DRIVER_VERSION)));
+    public void submitTask(DeviceManager.OpenCLContext context, long program, long queue) {
         final long startTime = System.nanoTime();
-        try (final DeviceManager.OpenCLContext context = new DeviceManager.OpenCLContext(platform, device);
-             final MemoryStack stack = MemoryStack.stackPush()) {
+        try (MemoryStack stack = MemoryStack.stackPush()) {
             IntBuffer errCodeRet = stack.callocInt(1);
 
             // prepare storage
-            log("Allocating memory resources");
+//            log("Allocating memory resources");
             final int groupSize = (int) (testLength / harvestPeriod + 1);
             final long totalStoragePointer = clCreateBuffer(context.getContext(), CL_MEM_WRITE_ONLY, (long) kelpCount << 3, errCodeRet);
             checkCLError(errCodeRet);
             final long perHarvestStoragePointer = clCreateBuffer(context.getContext(), CL_MEM_WRITE_ONLY, ((long) kelpCount * groupSize) << 2, errCodeRet);
             checkCLError(errCodeRet);
 
-            // prepare program
-            log("Preparing program");
-            final String source;
-            try (InputStream in = OpenCLSimulationSession.class.getClassLoader().getResourceAsStream("opencl/impl.cl")) {
-                if (in == null) throw new FileNotFoundException("impl.cl");
-                source = new String(in.readAllBytes());
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-            final long program = clCreateProgramWithSource(context.getContext(), source, errCodeRet);
-            checkCLError(errCodeRet);
-            checkCLError(clBuildProgram(program, context.getDevice(), "", null, NULL));
-
             // prepare kernel
-            log("Preparing kernel");
+//            log("Preparing kernel");
             final long kernel = clCreateKernel(program, "doWork", errCodeRet);
             checkCLError(errCodeRet);
             checkCLError(clSetKernelArg1i(kernel, 0, randomTickSpeed));
@@ -133,68 +97,76 @@ public class OpenCLSimulationSession implements Simulator {
             checkCLError(clSetKernelArg1p(kernel, 10, perHarvestStoragePointer));
 
             // submit
-            log("Submitting to OpenCL");
-            final long queue = clCreateCommandQueue(context.getContext(), context.getDevice(), NULL, errCodeRet);
-            checkCLError(errCodeRet);
-            final PointerBuffer pointerBuffer = stack.callocPointer(1);
-            pointerBuffer.put(kelpCount);
-            pointerBuffer.position(0);
-            checkCLError(clEnqueueNDRangeKernel(queue, kernel, 1, null, pointerBuffer, null, null, null));
+//            log("Submitting to OpenCL");
+            final PointerBuffer globalWorkSize = stack.callocPointer(1);
+            globalWorkSize.put(kelpCount);
+            globalWorkSize.position(0);
+            final PointerBuffer eventPointer = stack.callocPointer(1);
+            checkCLError(clEnqueueNDRangeKernel(queue, kernel, 1, null, globalWorkSize, null, null, eventPointer));
+            final long eventptr = eventPointer.get(0);
 
             // waiting
-            log("Waiting for results");
-            final LongBuffer totalStorage = MemoryUtil.memAllocLong(kelpCount);
-            final IntBuffer perHarvestStorage = MemoryUtil.memAllocInt(kelpCount * groupSize);
-            checkCLError(clFlush(queue));
-            checkCLError(clFinish(queue));
-            checkCLError(oclEnqueueReadBuffer(queue, totalStoragePointer, true, 0, totalStorage, null, null));
-            checkCLError(clEnqueueReadBuffer(queue, perHarvestStoragePointer, true, 0, perHarvestStorage, null, null));
+//            log("Waiting for results");
+            final CLEventCallback[] clEventCallback = new CLEventCallback[1];
+            clEventCallback[0] = CLEventCallback.create((event, event_command_exec_status, user_data) -> {
+                if (event_command_exec_status == CL_COMPLETE) {
+                    DeviceManager.clThread.callBacks.add((unused, unused1, unused2) -> {
+                        try {
+//                            log("Reading results from OpenCL");
+                            final LongBuffer totalStorage = MemoryUtil.memAllocLong(kelpCount);
+                            final IntBuffer perHarvestStorage = MemoryUtil.memAllocInt(kelpCount * groupSize);
+                            checkCLError(clFlush(queue));
+                            checkCLError(oclEnqueueReadBuffer(queue, totalStoragePointer, true, 0, totalStorage, null, null));
+                            checkCLError(clEnqueueReadBuffer(queue, perHarvestStoragePointer, true, 0, perHarvestStorage, null, null));
 
-            // process result
-            log("Processing results");
-            totalStorage.position(0);
-            final LongStream.Builder totalStorageStream = LongStream.builder();
-            while (totalStorage.hasRemaining()) {
-                totalStorageStream.accept(totalStorage.get());
-            }
+                            // process result
+//                            log("Processing results");
+                            totalStorage.position(0);
+                            final long[] totalStorageArray = new long[totalStorage.remaining()];
+                            while (totalStorage.hasRemaining()) {
+                                totalStorageArray[totalStorage.position()] = totalStorage.get();
+                            }
 
-            perHarvestStorage.position(0);
-            final IntStream.Builder perHarvestStream = IntStream.builder();
-            for (int group = 0; group < kelpCount; group ++) {
-                final int size = perHarvestStorage.get(group * groupSize + groupSize - 1);
-                if (size == 1 << 31) {
-                    log(String.format("Group %d encountered a OutOfBounds issue, ignoring group", size));
+                            perHarvestStorage.position(0);
+                            final IntStream.Builder perHarvestStream = IntStream.builder();
+                            for (int group = 0; group < kelpCount; group++) {
+                                final int size = perHarvestStorage.get(group * groupSize + groupSize - 1);
+                                if (size == 1 << 31) {
+                                    log(String.format("Group %d encountered a OutOfBounds issue, ignoring group", size));
+                                }
+                                for (int i = 0; i < size; i++) {
+                                    perHarvestStream.accept(perHarvestStorage.get(group * groupSize + i));
+                                }
+                            }
+
+                            future.complete(new SimulationResult(Arrays.stream(totalStorageArray).summaryStatistics(), perHarvestStream.build().summaryStatistics()));
+
+//                            log("Cleaning up");
+                            checkCLError(clReleaseEvent(eventptr));
+                            clEventCallback[0].free();
+                            checkCLError(clReleaseKernel(kernel));
+                            checkCLError(clReleaseMemObject(totalStoragePointer));
+                            checkCLError(clReleaseMemObject(perHarvestStoragePointer));
+                            MemoryUtil.memFree(totalStorage);
+                            MemoryUtil.memFree(perHarvestStorage);
+                        } catch (Throwable t) {
+                            t.printStackTrace();
+                            future.completeExceptionally(t);
+                        }
+                    });
+                } else if (event_command_exec_status < 0) {
+                    future.completeExceptionally(new RuntimeException("OpenCL Error " + event_command_exec_status + " while executing task"));
+                } else {
+                    System.out.println("Unknown status: " + event_command_exec_status);
                 }
-                for (int i = 0; i < size; i ++) {
-                    perHarvestStream.accept(perHarvestStorage.get(group * groupSize + i));
-                }
-            }
+            });
 
-            // clean up
-            log("Cleaning up");
-            checkCLError(clFlush(queue));
-            checkCLError(clReleaseCommandQueue(queue));
-            checkCLError(clReleaseKernel(kernel));
-            checkCLError(clReleaseProgram(program));
-            checkCLError(clReleaseMemObject(totalStoragePointer));
-            checkCLError(clReleaseMemObject(perHarvestStoragePointer));
-            MemoryUtil.memFree(totalStorage);
-            MemoryUtil.memFree(perHarvestStorage);
-
-            return new SimulationResult(totalStorageStream.build().summaryStatistics(), perHarvestStream.build().summaryStatistics());
+            CL11.clSetEventCallback(eventptr, CL_SUCCESS, clEventCallback[0], NULL);
         } catch (Throwable t) {
-            t.printStackTrace();
-            throw new RuntimeException(t);
+            future.completeExceptionally(t);
         } finally {
-            log(String.format("Done. %.1f hours (%d gt), time elapsed: %.1fms", testLength / 20.0 / 60.0 / 60.0, testLength, (System.nanoTime() - startTime) / 1_000_000.0));
+            future.thenRun(() -> log(String.format("Done. %.1f hours (%d gt), time elapsed: %.1fms", testLength / 20.0 / 60.0 / 60.0, testLength, (System.nanoTime() - startTime) / 1_000_000.0)));
         }
-    }
-
-    private static long oclCreateBuffer(long context, long flags, LongBuffer host_ptr, IntBuffer errcode_ret) {
-        if (CHECKS) {
-            checkSafe(errcode_ret, 1);
-        }
-        return CL11.nclCreateBuffer(context, flags, (long) host_ptr.remaining() << 3, memAddress(host_ptr), memAddressSafe(errcode_ret));
     }
 
     private static int oclEnqueueReadBuffer(long command_queue, long buffer, boolean blocking_read, long offset, LongBuffer ptr, PointerBuffer event_wait_list, PointerBuffer event) {
@@ -208,5 +180,9 @@ public class OpenCLSimulationSession implements Simulator {
         System.out.printf("[%d] %s\n", serial, message);
     }
 
-
+    @Override
+    public CompletableFuture<SimulationResult> runSimulation() {
+        DeviceManager.clThread.callBacks.add(this::submitTask);
+        return future;
+    }
 }

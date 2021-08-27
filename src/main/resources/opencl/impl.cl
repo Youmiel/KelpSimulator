@@ -27,6 +27,7 @@ __kernel void doWork(int randomTickSpeed, int schedulerFirst,
 
   size_t calcTime = randomNumber(&seedStorage) % 4096;
   uint harvestedCount = 0;
+  uint grownCount = 0;
   ulong timeSinceLastHarvest = 0;
   ulong timeSinceLastGrow = calcTime;
   totalStorage[id] = 0;
@@ -48,22 +49,27 @@ __kernel void doWork(int randomTickSpeed, int schedulerFirst,
       ulong extraWait = waterFlowDelay + ((schedulerFirst != 0) ? 0 : -1);
       time += extraWait;
       timeSinceLastHarvest = extraWait;
+      timeSinceLastGrow += extraWait;
+      continue;
     }
     grownLastTick = 0;
-    timeSinceLastGrow ++;
+    timeSinceLastGrow++;
     if (timeSinceLastGrow >= 4096) {
       for (ushort i = 0; i < randomTickSpeed; i++) {
         if (height < maxHeight && randomNumber(&seedStorage) % 100 < 14) {
           height++;
           grownLastTick++;
+          grownCount++;
         }
       }
-      timeSinceLastGrow = 0;
+      timeSinceLastGrow = timeSinceLastGrow - 4096;
     }
     // optimize simulation
     long timeBeforeGrow = 4096 - timeSinceLastGrow;
     long timeBeforeHarvest = harvestPeriod - timeSinceLastHarvest;
-    long skipTicks = (timeBeforeGrow < timeBeforeHarvest ? timeBeforeGrow : timeBeforeHarvest) - 2;
+    long skipTicks = (timeBeforeGrow < timeBeforeHarvest ? timeBeforeGrow
+                                                         : timeBeforeHarvest) -
+                     2;
     if (skipTicks > 1) {
       time += skipTicks;
       timeSinceLastHarvest += skipTicks;

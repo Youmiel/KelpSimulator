@@ -6,6 +6,7 @@ import com.ishland.simulations.kelpsimulator.impl.Simulator;
 import java.util.Arrays;
 import java.util.Objects;
 import java.util.Random;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
 
@@ -36,7 +37,12 @@ public class JavaSimulationSession implements Simulator {
         this.heightLimit = heightLimit;
     }
 
-    public SimulationResult runSimulation() {
+    @Override
+    public CompletableFuture<SimulationResult> runSimulation() {
+        return CompletableFuture.supplyAsync(this::runSimulation0);
+    }
+
+    private SimulationResult runSimulation0() {
         log("Preparing simulation");
         KelpPlant[][] kelpPlants = new KelpPlant[(int) Math.ceil(kelpCount / (double) SECTION_SURFACE_SIZE)][SECTION_SURFACE_SIZE];
         {

@@ -11,6 +11,8 @@ import java.io.Closeable;
 import java.nio.IntBuffer;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.stream.LongStream;
 
 import static com.ishland.simulations.kelpsimulator.impl.opencl.CLUtil.checkCLError;
@@ -34,6 +36,7 @@ import static org.lwjgl.system.MemoryUtil.memUTF8;
 public class DeviceManager {
 
     public static final List<PlatformDevices> validDevices = new ArrayList<>();
+    static final CLThread clThread = new CLThread();
 
     static {
         System.out.println("LWJGL version " + Version.getVersion());
@@ -92,6 +95,8 @@ public class DeviceManager {
                 validDevices.add(new PlatformDevices(platform, devicePointers.build().toArray()));
             }
         }
+        clThread.start();
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> clThread.running = false));
     }
 
 
