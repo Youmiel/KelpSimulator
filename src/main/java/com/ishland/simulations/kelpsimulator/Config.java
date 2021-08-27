@@ -40,7 +40,7 @@ public class Config {
         heightLimit = Arrays.stream(getProperty(properties, "heightLimit", "8,12,16,20,24").split(","))
                 .mapToInt(Integer::parseInt)
                 .toArray();
-        implArgs = getProperty(properties, "implArgs", "java").split(",");
+        implArgs = getProperty(properties, "implArgs", "opencl,0,0").split(",");
         maxConcurrentTasks = Integer.parseInt(getProperty(properties, "maxConcurrentTasks", String.valueOf(Math.min(Runtime.getRuntime().availableProcessors(), 6))));
 
         try (Writer writer = Files.newBufferedWriter(Path.of(".", "config.properties"), StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.CREATE)) {
