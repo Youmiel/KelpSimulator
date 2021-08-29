@@ -8,21 +8,21 @@ import decimal
 import time
 import multiprocessing
 import os
+import datetime
 
 # %% [markdown]
-# What we have known:
-# - Random tick ticks 3 times a gametick in every subchunk, 1 block each time, and duplication is allowed.
-#     - Therefore, the probability of a random tick selects exactly one specific block is `p = 1 / (16 ** 3)` 
+# #### What we have known
+# 
+# - Random tick ticks 3 times a gametick in every subchunk, 1 block each time, distributed equally, and duplication is allowed.
+#   - Therefore, the probability of a random tick selects exactly one specific block is `p = 1 / (16 ** 3)` 
 # - A kelp block has 14% chance to grow 1 block if randomly ticked once.
 # - A kelp block stops growing when *age* >= 25, and *age* increase 1 each time it grows.
-# - Kelp obtians random *age* between [0,24] when it is placed, not grow.
+# - Kelp obtians random *age* between [0,24] when it is placed, not growed.
 
 # %%
 class Kelp():
     growth_probability = 0.14
     seletct_probability = 1/(16**3)
-    segement_size = 16**2
-    subchunk_size = 16**3
     def __init__(self) -> None:
         self.init()
 
@@ -43,22 +43,23 @@ class Kelp():
         self.harvest()
 
 # %% [markdown]
-# ``` Python
-# tick_speed = 3
-# harvest_period = 10 
-#     # gametick
-# empty_tick = 5 
-#     # water flow 5gt
-# height_limit = 10
+# #### Configs:
+# 
+# ```
+# tick_speed: int
+#     # known as randomTickSpeed
+# harvest_period: int
+#     # gameticks of harvest period
+# empty_tick: int
+#     # some special cases after harvest so that the kelp cannot grow immediately after harvest. For example, water flow takes 5gt to refill the empty space created by piston.
+# height_limit: int
 #     # max height allowed in this farm
-# grow_after_tick = False 
+# grow_after_tick: bool 
 #     # Fasle: 1.15~1.16.5 behavior, random tick before scheduled tick; True: 1.15- & 1.17.x behavior, random tick after schedueled tick
-# kelp_count = 10000
-# test_time = 72000 * 1000 
-#     # gametick
-# # ------------
-# item_counter: int
-# gametick: int
+# kelp_count: int
+#     # numbers of kelp that used in simulation
+# test_time: int
+#     # unit gameticks
 # ```
 # 
 
@@ -66,26 +67,115 @@ class Kelp():
 config = {
     'process_count': 4,
     'tick_speed': 3,
-    'harvest_period': {
+    'harvest_period': {         # supported types are 'continuous' and 'list'
         'type': 'continuous',
         'start': 600,
         'end': 3600,
         'step': 600
     },
-    'empty_tick': {
+    'empty_tick': {             # supported types are 'continuous' and 'list'
         'type': 'list',
         'values': [5]
     },
-    'height_limit': {
+    'height_limit': {           # supported types are 'continuous' and 'list'
         'type': 'list',
         'values': [10, 20]
     },
     'grow_after_tick': False,
     'kelp_count': 1000,
-    'test_time': 72000,
+    'test_time': {
+        'min_value': 72000,
+        'max_value': -1,
+        'phase_limit': 1000,    # test_time = max(phase_limit * harvest_period, test_time)
+        },
     'keys': ['harvest_period','height_limit']
 }
-# supported types are 'continuous' and 'list'
+
+# %% [markdown]
+# Below codes simulate a system with configured conditions, modelling a kelp farm.
+
+# %%
+class KelpFarm():
+    segement_size = 16**2
+    subchunk_size = 16**3
+    def __init__(self, kelps: dict, config: dict) -> None:
+        self.kelp_count = config['kelp_count']
+        self.tick_speed = config['tick_speed']
+        self.harvest_period = config['harvest_period']
+        self.empty_tick = config['empty_tick']
+        self.height_limit = config['height_limit']
+        self.grow_after_tick = config['grow_after_tick']
+        self.test_time = max(config['test_time']['min_value'],             config['test_time']['phase_limit'] * config['harvest_period'])
+        if config['test_time']['max_value'] > config['test_time']['min_value'] and config['test_time']['max_value'] < self.test_time:
+            self.test_time = config['test_time']['max_value']
+
+        self.kelps = kelps
+
+        keys = config['keys']
+        self.task_name = '[' + keys[0] + '=' + str(config[keys[0]]) + ' ' +            keys[1] + '=' + str(config[keys[1]]) + ' ' +            keys[2] + '=' + str(config[keys[2]]) + ']'
+        #counter   
+        self.item_count = 0
+        self.tick_empty = 0
+        self.tick_harvest = self.harvest_period
+
+
+    def task_name(self) -> str:
+            return self.task_name
+
+    def start(self) -> tuple:
+        lo = multiprocessing.Lock()
+        lo.acquire()
+        print('Start simulating:' + self.task_name + '\n', end='')
+        lo.release()
+        return self.simulate()
+    
+    def simulate(self) -> tuple:
+        for self.gametick in range(self.test_time):
+            self.tick()    
+        eff = decimal.Decimal(self.item_count) / decimal.Decimal(self.kelp_count * self.test_time / 72000.)
+        return(config, eff)
+
+    def tick(self):
+        global kelps
+        if(self.grow_after_tick):
+            self.tick_harvest -= 1 # harvest counter
+            if self.tick_empty > 0:
+                self.tick_empty -= 1 # scheduled tick
+            if self.tick_empty <= 0:
+                for i in range(self.tick_speed):  # grow(random tick)
+                    selection = []
+                    for segement in range(int(self.kelp_count / KelpFarm.segement_size) + 1):
+                        index = random.randrange(0, KelpFarm.subchunk_size) + segement * KelpFarm.segement_size
+                        if index < ((segement + 1) * KelpFarm.segement_size) and index < self.kelp_count:
+                            selection.append(self.kelps[index])
+                    for kelp in selection:
+                        kelp.tick()
+        else:
+            self.tick_harvest -= 1 # harvest counter
+            if self.tick_empty <= 0:
+                for i in range(self.tick_speed):  # grow(random tick)
+                    selection = []
+                    for segement in range(int(self.kelp_count / KelpFarm.segement_size) + 1):
+                        index = random.randrange(0, KelpFarm.subchunk_size) + segement * KelpFarm.segement_size
+                        if index < ((segement + 1) * KelpFarm.segement_size) and index < self.kelp_count:
+                            selection.append(self.kelps[index])
+                    for kelp in selection:
+                        kelp.tick()
+            if self.tick_empty > 0:
+                self.tick_empty -= 1 # scheduled tick
+        if self.tick_harvest <= 0:
+            items = 0
+            for kelp in self.kelps:
+                items += min(kelp.harvest(), self.height_limit)
+            self.item_count += items
+            self.tick_harvest = self.harvest_period # piston
+            self.tick_empty = self.empty_tick
+        if ((self.gametick + 1) % 72000) == 0:
+            lo = multiprocessing.Lock()
+            lo.acquire()
+            print(self.task_name + 'Warped ' + str(int((self.gametick + 1) / 72000)) + ' hour(s)..\n', end= '')
+            lo.release()
+        
 
 
 # %%
@@ -94,6 +184,12 @@ kelps = []
 result = []
 temp_result = []
 
+# %% [markdown]
+# Some works to do before the calculation start:
+# 
+# - Load the config(json) from file for the test condition.
+# - Initialize the test condition, translate some configuration so further calculation is easier.
+# 
 
 # %%
 def load_config(path: str):
@@ -140,13 +236,17 @@ def init():
     os.makedirs('./multiProcessResults', exist_ok=True)
 
     for i in range(config['kelp_count']):
-        kelps.append(Kelp())
+        kelp = Kelp()
+        kelp.reset
+        kelps.append(kelp)
     print('Starting test with %d kelp plants'%config['kelp_count'])
 
+# %% [markdown]
+# There are 3 configurable variables that can have multiple input value, so 3 for-loops to handle them. To make data easier to use, the results are exported to csv tables.
 
 # %%
 def write_csv(result:dict, config: dict, key_3):
-    path = './multiProcessResults/' + config['keys'][2] + '=' + str(key_3) +            '[' + config['keys'][0] + ','+ config['keys'][1] + ']' +        str(int(time.time()))
+    path = './multiProcessResults/' + config['keys'][2] + '=' + str(key_3) +            '[' + config['keys'][0] + ','+ config['keys'][1] + ']' +        time.asctime().replace(':','.')
     with open(path + '.csv','w',newline='') as csvfile:
         writer = csv.writer(csvfile)
         writer.writerow([config['keys'][1] + '|' + config['keys'][0]] +            list(config[config['keys'][0]]))
@@ -154,19 +254,20 @@ def write_csv(result:dict, config: dict, key_3):
             writer.writerow([key_2] + result[key_2])
 
 def start(pool: multiprocessing.Pool):
-    global config, result, temp_result
+    global config, result, temp_result, kelps
     conf = config.copy()
     for key_3 in config[config['keys'][2]]:
         conf[config['keys'][2]] = key_3
         result = {}
         for key_2 in config[config['keys'][1]]:
             conf[config['keys'][1]] = key_2
-            task_configs = []
+
+            task_farms = []
             for key_1 in config[config['keys'][0]]:
                 conf[config['keys'][0]] = key_1
-                task_configs.append((conf.copy(), [key_1,key_2,key_3]))
+                task_farms.append(KelpFarm(kelps.copy(),conf.copy()))
             
-            async_result = pool.starmap_async(sim_task,task_configs)
+            async_result = pool.map_async(KelpFarm.start, task_farms)
             # collect data
             temp_result = async_result.get()
             temp_list = []
@@ -175,75 +276,9 @@ def start(pool: multiprocessing.Pool):
             result[key_2] = temp_list
 
         write_csv(result, config, key_3)
-            
-def sim_task(conf: dict, keys: list) -> tuple:
-    task_name = '[' + conf['keys'][0] + '=' + str(keys[0]) + ' ' +    conf['keys'][1] + '=' + str(keys[1]) + ' ' +    conf['keys'][2] + '=' + str(keys[2]) + ']'
-    lo = multiprocessing.Lock()
-    lo.acquire()
-    print('Start simulating:' + task_name + '\n', end='')
-    lo.release()
-    return simulate(conf, task_name)
 
-
-# %%
-def simulate(config: dict, task_name: str) -> tuple:
-    global kelps, temp_result
-    gt: int
-    # print(config)
-    for kelp in kelps:
-        kelp.reset()
-    counters = {
-        'item': 0,
-        'empty': 0,
-        'harvest': config['harvest_period']
-    }
-    for gt in range(config['test_time']):
-        tick(gt, counters, config, task_name)    
-    eff = decimal.Decimal(counters['item']) / decimal.Decimal(config['kelp_count'] * config['test_time'] / 72000.)
-    return(config, eff)
-
-def tick(gametick: int, counters: dict, config: dict, task_name: str):
-    global kelps
-    if(config['grow_after_tick']):
-        counters['harvest'] -= 1 # harvest counter
-        if counters['empty'] > 0:
-            counters['empty'] -= 1 # scheduled tick
-        if counters['empty'] <= 0:
-            for i in range(config['tick_speed']):  # grow(random tick)
-                selection = []
-                for segement in range(int(config['kelp_count'] / Kelp.segement_size) + 1):
-                    index = random.randrange(0, Kelp.subchunk_size) + segement * Kelp.segement_size
-                    if index < ((segement + 1) * Kelp.segement_size) and index < config['kelp_count']:
-                        selection.append(kelps[index])
-                for kelp in selection:
-                    kelp.tick()
-    else:
-        counters['harvest'] -= 1 # harvest counter
-        if counters['empty'] <= 0:
-            for i in range(config['tick_speed']):  # grow(random tick)
-                selection = []
-                for segement in range(int(config['kelp_count'] / Kelp.segement_size) + 1):
-                    index = random.randrange(0, Kelp.subchunk_size) + segement * Kelp.segement_size
-                    if index < ((segement + 1) * Kelp.segement_size) and index < config['kelp_count']:
-                        selection.append(kelps[index])
-                for kelp in selection:
-                    kelp.tick()
-        if counters['empty'] > 0:
-            counters['empty'] -= 1 # scheduled tick
-    if counters['harvest'] <= 0:
-        items = 0
-        for kelp in kelps:
-            items += min(kelp.harvest(), config['height_limit'])
-        counters['item'] += items
-        counters['harvest'] = config['harvest_period'] # piston
-        counters['empty'] = config['empty_tick']
-    if ((gametick + 1) % 72000) == 0:
-        lo = multiprocessing.Lock()
-        lo.acquire()
-        print(task_name + 'Warped ' + str(int((gametick + 1) / 72000)) + ' hour(s)..\n', end= '')
-        lo.release()
-    
-
+# %% [markdown]
+# Nothing here because the data is supposed to be handled later.
 
 # %%
 def show_result():

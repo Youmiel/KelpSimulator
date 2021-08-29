@@ -4,8 +4,8 @@
     "harvest_period": {
         "type": "continuous",
         "start": 10,
-        "end": 7200,
-        "step": 10
+        "end": 72010,
+        "step": 40
     },
     "empty_tick": {
         "type": "list",
@@ -18,7 +18,7 @@
     "grow_after_tick": false,
     "kelp_count": 1024,
     "test_time": {
-        "min_value": 216000,
+        "min_value": 72000,
         "max_value": -1,
         "phase_limit": 1000
     },
