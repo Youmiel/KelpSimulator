@@ -123,17 +123,29 @@ public class OpenCLSimulationSession implements Simulator {
 //                            log("Processing results");
                             sectionedTotalStorage.position(0);
                             final long[] sectionedTotalArray = new long[kelpCount];
-                            int sectionCounter = 0;
-                            while (sectionedTotalStorage.hasRemaining()) {
-                                long sectionTotal = 0;
-                                for (int i = 0; i < harvestSize; i ++) sectionTotal += sectionedTotalStorage.get();
-                                sectionedTotalArray[sectionCounter ++] = sectionTotal;
+                            {
+                                int sectionCounter = 0;
+                                while (sectionedTotalStorage.hasRemaining()) {
+                                    long sectionTotal = 0;
+                                    for (int i = 0; i < harvestSize; i++) sectionTotal += sectionedTotalStorage.get();
+                                    sectionedTotalArray[sectionCounter++] = sectionTotal;
+                                }
                             }
                             final LongSummaryStatistics statistics = Arrays.stream(sectionedTotalArray).summaryStatistics();
 
+                            sectionedTotalStorage.position(0);
+                            final int[] rawStorageArray = new int[sectionedTotalStorage.remaining()];
+                            {
+                                int counter = 0;
+                                while (sectionedTotalStorage.hasRemaining()) {
+                                    rawStorageArray[counter ++] = (int) sectionedTotalStorage.get();
+                                }
+                            }
+                            final IntSummaryStatistics statistics1 = Arrays.stream(rawStorageArray).summaryStatistics();
+
                             future.complete(new SimulationResult(
                                     new LongSummaryStatistics(kelpCount, statistics.getMin() / 256, statistics.getMax() / 256, statistics.getSum()),
-                                    Arrays.stream(sectionedTotalArray).mapToInt(value -> (int) value).summaryStatistics()
+                                    new IntSummaryStatistics(statistics1.getCount() * 256, statistics1.getMin() / 256, statistics1.getMax() / 256, statistics1.getSum())
                             ));
 
 //                            log("Cleaning up");

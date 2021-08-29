@@ -27,13 +27,17 @@ __kernel void doWork(int randomTickSpeed, int schedulerFirst,
   long seedStorage = seed + partId * harvestSize + harvestId;
 
   uint existKelps = 256;
-  if (partId * 256 > kelpCount) {
-    existKelps = kelpCount - (256 * (partId - 1));
+  if ((partId + 1) * 256 > kelpCount) {
+    existKelps = kelpCount - (256 * (partId));
   }
   long total = 0;
-  uint kelps[256] = {0};
+  uint kelpHeight[256] = {0};
+  uint kelpMaxHeight[256] = {0};
   for (uint i = 0; i < existKelps; i++) {
-    kelps[i] = nextInt(&seedStorage, heightLimit);
+    short maxHeight = nextInt(&seedStorage, 25) + 2;
+    if (maxHeight > heightLimit) maxHeight = heightLimit;
+    kelpMaxHeight[i] = maxHeight;
+    kelpHeight[i] = 1;
   }
   // note that incomplete period is dropped
   uint tickCount =
@@ -41,8 +45,8 @@ __kernel void doWork(int randomTickSpeed, int schedulerFirst,
   for (uint t = 0; t < tickCount; t++) {
     if (nextInt(&seedStorage, 100) < 14) {
       int ticked = nextInt(&seedStorage, 4096);
-      if (ticked < existKelps && kelps[ticked] < heightLimit) {
-        kelps[ticked]++;
+      if (ticked < existKelps && kelpHeight[ticked] < kelpMaxHeight[ticked]) {
+        kelpHeight[ticked]++;
         total++;
       }
     }
