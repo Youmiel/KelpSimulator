@@ -16,7 +16,6 @@ import java.util.LongSummaryStatistics;
 import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.LongStream;
 
 import static com.ishland.simulations.kelpsimulator.impl.opencl.CLUtil.checkCLError;
 import static org.lwjgl.opencl.CL10.CL_COMPLETE;
@@ -25,7 +24,6 @@ import static org.lwjgl.opencl.CL10.CL_SUCCESS;
 import static org.lwjgl.opencl.CL10.clCreateBuffer;
 import static org.lwjgl.opencl.CL10.clCreateKernel;
 import static org.lwjgl.opencl.CL10.clEnqueueNDRangeKernel;
-import static org.lwjgl.opencl.CL10.clEnqueueWriteBuffer;
 import static org.lwjgl.opencl.CL10.clFlush;
 import static org.lwjgl.opencl.CL10.clReleaseEvent;
 import static org.lwjgl.opencl.CL10.clReleaseKernel;
@@ -33,6 +31,7 @@ import static org.lwjgl.opencl.CL10.clReleaseMemObject;
 import static org.lwjgl.opencl.CL10.clSetKernelArg1i;
 import static org.lwjgl.opencl.CL10.clSetKernelArg1l;
 import static org.lwjgl.opencl.CL10.clSetKernelArg1p;
+import static org.lwjgl.opencl.CL10.clSetKernelArg1s;
 import static org.lwjgl.opencl.CL10.nclEnqueueReadBuffer;
 import static org.lwjgl.system.Checks.CHECKS;
 import static org.lwjgl.system.Checks.checkSafe;
@@ -55,12 +54,13 @@ public class OpenCLSimulationSession implements Simulator {
     private final long testLength;
     private final int harvestPeriod;
     private final int heightLimit;
+    private final ReductionMode reductionMode;
 
     private final Random random = new Random();
 
     private final CompletableFuture<SimulationResult> future = new CompletableFuture<>();
 
-    public OpenCLSimulationSession(int randomTickSpeed, boolean schedulerFirst, int waterFlowDelay, int kelpCount, long testLength, int harvestPeriod, int heightLimit) {
+    public OpenCLSimulationSession(int randomTickSpeed, boolean schedulerFirst, int waterFlowDelay, int kelpCount, long testLength, int harvestPeriod, int heightLimit, ReductionMode reductionMode) {
         this.randomTickSpeed = randomTickSpeed;
         this.schedulerFirst = schedulerFirst;
         this.waterFlowDelay = waterFlowDelay;
@@ -68,6 +68,7 @@ public class OpenCLSimulationSession implements Simulator {
         this.testLength = testLength;
         this.harvestPeriod = harvestPeriod;
         this.heightLimit = heightLimit;
+        this.reductionMode = reductionMode;
     }
 
     public void submitTask(DeviceManager.OpenCLContext context, long program, long queue) {
@@ -77,8 +78,12 @@ public class OpenCLSimulationSession implements Simulator {
 
             // prepare storage
 //            log("Allocating memory resources");
-            final int partSize = (int) Math.ceil(kelpCount / 256.0);
-            final int harvestSize = (int) Math.floor((testLength + waterFlowDelay) / (double) (harvestPeriod + waterFlowDelay));
+            final int partSizeOriginal = (int) Math.ceil(kelpCount / 256.0);
+            final int harvestSizeOriginal = (int) Math.floor((testLength + waterFlowDelay) / (double) (harvestPeriod + waterFlowDelay));
+            final boolean isReducedKelp = reductionMode == ReductionMode.REDUCED_KELP_COUNT || reductionMode == ReductionMode.REDUCED_BOTH;
+            final boolean isReducedLength = reductionMode == ReductionMode.REDUCED_TEST_LENGTH || reductionMode == ReductionMode.REDUCED_BOTH;
+            final int partSize = isReducedKelp ? 1 : partSizeOriginal;
+            final int harvestSize = isReducedLength ? 1 : harvestSizeOriginal;
             final long sectionedTotalStoragePointer = clCreateBuffer(context.getContext(), CL_MEM_WRITE_ONLY, ((long) partSize * harvestSize) << 3, errCodeRet);
             checkCLError(errCodeRet);
 
@@ -89,8 +94,8 @@ public class OpenCLSimulationSession implements Simulator {
             checkCLError(clSetKernelArg1i(kernel, 0, randomTickSpeed));
             checkCLError(clSetKernelArg1i(kernel, 1, schedulerFirst ? 1 : 0));
             checkCLError(clSetKernelArg1i(kernel, 2, waterFlowDelay));
-            checkCLError(clSetKernelArg1i(kernel, 3, kelpCount));
-            checkCLError(clSetKernelArg1l(kernel, 4, testLength));
+            checkCLError(clSetKernelArg1i(kernel, 3, isReducedKelp ? 256 : kelpCount));
+            checkCLError(clSetKernelArg1l(kernel, 4, isReducedLength ? harvestPeriod + waterFlowDelay : testLength));
             checkCLError(clSetKernelArg1i(kernel, 5, harvestPeriod));
             checkCLError(clSetKernelArg1i(kernel, 6, heightLimit));
             checkCLError(clSetKernelArg1l(kernel, 7, random.nextLong())); // seed
@@ -143,9 +148,11 @@ public class OpenCLSimulationSession implements Simulator {
                             }
                             final IntSummaryStatistics statistics1 = Arrays.stream(rawStorageArray).summaryStatistics();
 
+                            final double reductionRestoringMultiplier = getReductionRestoringMultiplier();
+
                             future.complete(new SimulationResult(
-                                    new LongSummaryStatistics(kelpCount, statistics.getMin() / 256, statistics.getMax() / 256, statistics.getSum()),
-                                    new IntSummaryStatistics(statistics1.getCount() * 256, statistics1.getMin() / 256, statistics1.getMax() / 256, statistics1.getSum())
+                                    new LongSummaryStatistics(kelpCount, (long) (statistics.getMin() / 256 * reductionRestoringMultiplier), (long) (statistics.getMax() / 256 * reductionRestoringMultiplier), (long) (statistics.getSum() * reductionRestoringMultiplier)),
+                                    new IntSummaryStatistics((long) partSizeOriginal * harvestSizeOriginal, (int) (statistics1.getMin() / 256 * reductionRestoringMultiplier), (int) (statistics1.getMax() / 256 * reductionRestoringMultiplier), (long) (statistics1.getSum() * reductionRestoringMultiplier))
                             ));
 
 //                            log("Cleaning up");
@@ -190,4 +197,21 @@ public class OpenCLSimulationSession implements Simulator {
         DeviceManager.clThread.callBacks.add(this::submitTask);
         return future;
     }
+
+    private double getReductionRestoringMultiplier() {
+        return switch (reductionMode) {
+            case NONE -> 1.0D;
+            case REDUCED_KELP_COUNT -> kelpCount / 256.0;
+            case REDUCED_TEST_LENGTH -> testLength / (double) (harvestPeriod + waterFlowDelay);
+            case REDUCED_BOTH -> (kelpCount / 256.0) * (testLength / (double) (harvestPeriod + waterFlowDelay));
+        };
+    }
+
+    public enum ReductionMode {
+        NONE,
+        REDUCED_TEST_LENGTH,
+        REDUCED_KELP_COUNT,
+        REDUCED_BOTH
+    }
+
 }

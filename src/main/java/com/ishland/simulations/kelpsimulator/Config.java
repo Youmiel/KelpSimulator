@@ -1,5 +1,7 @@
 package com.ishland.simulations.kelpsimulator;
 
+import com.ishland.simulations.kelpsimulator.impl.opencl.OpenCLSimulationSession;
+
 import java.io.IOException;
 import java.io.Reader;
 import java.io.Writer;
@@ -20,6 +22,8 @@ public class Config {
     static final int[] harvestPeriod;
     static final int[] heightLimit;
     public static final String[] implArgs;
+
+    public static final OpenCLSimulationSession.ReductionMode oclReductionMode;
 
     static {
         final Properties properties = new Properties();
@@ -42,6 +46,8 @@ public class Config {
                 .toArray();
         implArgs = getProperty(properties, "implArgs", "opencl,0,0").split(",");
         maxConcurrentTasks = Integer.parseInt(getProperty(properties, "maxConcurrentTasks", String.valueOf(Math.min(Runtime.getRuntime().availableProcessors(), 6))));
+
+        oclReductionMode = OpenCLSimulationSession.ReductionMode.valueOf(getProperty(properties, "oclReductionMode", OpenCLSimulationSession.ReductionMode.NONE.name()));
 
         try (Writer writer = Files.newBufferedWriter(Path.of(".", "config.properties"), StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.CREATE)) {
             properties.store(writer, "KelpSimulator");

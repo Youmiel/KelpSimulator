@@ -17,9 +17,6 @@ import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicInteger;
 
 public class Main {
 
@@ -39,7 +36,7 @@ public class Main {
                 if (Config.implArgs[0].equals("java")) {
                     session = new JavaSimulationSession(Config.randomTickSpeed, Config.schedulerFirst, Config.waterFlowDelay, Config.kelpCount, Config.testLength, harvestPeriod, heightLimit);
                 } else if (Config.implArgs[0].equals("opencl")) {
-                    session = new OpenCLSimulationSession(Config.randomTickSpeed, Config.schedulerFirst, Config.waterFlowDelay, Config.kelpCount, Config.testLength, harvestPeriod, heightLimit);
+                    session = new OpenCLSimulationSession(Config.randomTickSpeed, Config.schedulerFirst, Config.waterFlowDelay, Config.kelpCount, Config.testLength, harvestPeriod, heightLimit, Config.oclReductionMode);
                 } else {
                     throw new IllegalArgumentException("Unknown impl");
                 }
