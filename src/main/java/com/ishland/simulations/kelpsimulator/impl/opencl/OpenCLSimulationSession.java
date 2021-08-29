@@ -11,9 +11,12 @@ import org.lwjgl.system.MemoryUtil;
 import java.nio.IntBuffer;
 import java.nio.LongBuffer;
 import java.util.Arrays;
+import java.util.IntSummaryStatistics;
+import java.util.LongSummaryStatistics;
 import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.LongStream;
 
 import static com.ishland.simulations.kelpsimulator.impl.opencl.CLUtil.checkCLError;
 import static org.lwjgl.opencl.CL10.CL_COMPLETE;
@@ -22,6 +25,7 @@ import static org.lwjgl.opencl.CL10.CL_SUCCESS;
 import static org.lwjgl.opencl.CL10.clCreateBuffer;
 import static org.lwjgl.opencl.CL10.clCreateKernel;
 import static org.lwjgl.opencl.CL10.clEnqueueNDRangeKernel;
+import static org.lwjgl.opencl.CL10.clEnqueueWriteBuffer;
 import static org.lwjgl.opencl.CL10.clFlush;
 import static org.lwjgl.opencl.CL10.clReleaseEvent;
 import static org.lwjgl.opencl.CL10.clReleaseKernel;
@@ -53,6 +57,7 @@ public class OpenCLSimulationSession implements Simulator {
     private final int heightLimit;
 
     private final Random random = new Random();
+
     private final CompletableFuture<SimulationResult> future = new CompletableFuture<>();
 
     public OpenCLSimulationSession(int randomTickSpeed, boolean schedulerFirst, int waterFlowDelay, int kelpCount, long testLength, int harvestPeriod, int heightLimit) {
@@ -72,8 +77,9 @@ public class OpenCLSimulationSession implements Simulator {
 
             // prepare storage
 //            log("Allocating memory resources");
-            final int groupSize = (int) (testLength / harvestPeriod + 1);
-            final long totalStoragePointer = clCreateBuffer(context.getContext(), CL_MEM_WRITE_ONLY, (long) kelpCount << 3, errCodeRet);
+            final int partSize = (int) Math.ceil(kelpCount / 256.0);
+            final int harvestSize = (int) Math.floor((testLength + waterFlowDelay) / (double) (harvestPeriod + waterFlowDelay));
+            final long sectionedTotalStoragePointer = clCreateBuffer(context.getContext(), CL_MEM_WRITE_ONLY, ((long) partSize * harvestSize) << 3, errCodeRet);
             checkCLError(errCodeRet);
 
             // prepare kernel
@@ -87,17 +93,18 @@ public class OpenCLSimulationSession implements Simulator {
             checkCLError(clSetKernelArg1l(kernel, 4, testLength));
             checkCLError(clSetKernelArg1i(kernel, 5, harvestPeriod));
             checkCLError(clSetKernelArg1i(kernel, 6, heightLimit));
-            checkCLError(clSetKernelArg1i(kernel, 7, groupSize)); // per harvest size
-            checkCLError(clSetKernelArg1l(kernel, 8, new Random().nextLong())); // seed
-            checkCLError(clSetKernelArg1p(kernel, 9, totalStoragePointer));
+            checkCLError(clSetKernelArg1l(kernel, 7, random.nextLong())); // seed
+            checkCLError(clSetKernelArg1i(kernel, 8, harvestSize));
+            checkCLError(clSetKernelArg1p(kernel, 9, sectionedTotalStoragePointer));
 
             // submit
 //            log("Submitting to OpenCL");
-            final PointerBuffer globalWorkSize = stack.callocPointer(1);
-            globalWorkSize.put(kelpCount);
+            final PointerBuffer globalWorkSize = stack.callocPointer(2);
+            globalWorkSize.put(partSize);
+            globalWorkSize.put(harvestSize);
             globalWorkSize.position(0);
             final PointerBuffer eventPointer = stack.callocPointer(1);
-            checkCLError(clEnqueueNDRangeKernel(queue, kernel, 1, null, globalWorkSize, null, null, eventPointer));
+            checkCLError(clEnqueueNDRangeKernel(queue, kernel, 2, null, globalWorkSize, null, null, eventPointer));
             final long eventptr = eventPointer.get(0);
 
             // waiting
@@ -108,31 +115,33 @@ public class OpenCLSimulationSession implements Simulator {
                     DeviceManager.clThread.callBacks.add((unused, unused1, unused2) -> {
                         try {
 //                            log("Reading results from OpenCL");
-                            final LongBuffer totalStorage = MemoryUtil.memAllocLong(kelpCount);
+                            final LongBuffer sectionedTotalStorage = MemoryUtil.memAllocLong(partSize * harvestSize);
                             checkCLError(clFlush(queue));
-                            checkCLError(oclEnqueueReadBuffer(queue, totalStoragePointer, true, 0, totalStorage, null, null));
+                            checkCLError(oclEnqueueReadBuffer(queue, sectionedTotalStoragePointer, true, 0, sectionedTotalStorage, null, null));
 
                             // process result
 //                            log("Processing results");
-                            totalStorage.position(0);
-                            final long[] totalStorageArray = new long[totalStorage.remaining()];
-                            while (totalStorage.hasRemaining()) {
-                                totalStorageArray[totalStorage.position()] = totalStorage.get();
+                            sectionedTotalStorage.position(0);
+                            final long[] sectionedTotalArray = new long[kelpCount];
+                            int sectionCounter = 0;
+                            while (sectionedTotalStorage.hasRemaining()) {
+                                long sectionTotal = 0;
+                                for (int i = 0; i < harvestSize; i ++) sectionTotal += sectionedTotalStorage.get();
+                                sectionedTotalArray[sectionCounter ++] = sectionTotal;
                             }
+                            final LongSummaryStatistics statistics = Arrays.stream(sectionedTotalArray).summaryStatistics();
 
                             future.complete(new SimulationResult(
-                                    Arrays.stream(totalStorageArray).summaryStatistics(),
-                                    Arrays.stream(totalStorageArray)
-                                            .mapToInt(total -> (int) Math.round(total / (testLength / (double) harvestPeriod)))
-                                            .summaryStatistics()
+                                    new LongSummaryStatistics(kelpCount, statistics.getMin() / 256, statistics.getMax() / 256, statistics.getSum()),
+                                    Arrays.stream(sectionedTotalArray).mapToInt(value -> (int) value).summaryStatistics()
                             ));
 
 //                            log("Cleaning up");
                             checkCLError(clReleaseEvent(eventptr));
                             clEventCallback[0].free();
                             checkCLError(clReleaseKernel(kernel));
-                            checkCLError(clReleaseMemObject(totalStoragePointer));
-                            MemoryUtil.memFree(totalStorage);
+                            checkCLError(clReleaseMemObject(sectionedTotalStoragePointer));
+                            MemoryUtil.memFree(sectionedTotalStorage);
                         } catch (Throwable t) {
                             t.printStackTrace();
                             future.completeExceptionally(t);

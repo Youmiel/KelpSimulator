@@ -1,77 +1,51 @@
-uint randomNumber(ulong *seed_ptr) {
-  ulong seed = *seed_ptr;
+int randomNumber(long *seed_ptr, ushort bits) {
+  long seed = *seed_ptr;
   seed = (seed * 0x5DEECE66DL + 0xBL) & ((1L << 48) - 1);
-  uint result = seed >> 16;
+  int result = seed >> (48 - bits);
   *seed_ptr = seed;
   return result;
 }
 
+int nextInt(long *seed_ptr, int bound) {
+  int r = randomNumber(seed_ptr, 31);
+  int m = bound - 1;
+  if ((bound & m) == 0) // i.e., bound is a power of 2
+    r = (int)((bound * (long)r) >> 31);
+  else {
+    for (int u = r; u - (r = u % bound) + m < 0; u = randomNumber(seed_ptr, 31))
+      ;
+  }
+  return r;
+}
+
 __kernel void doWork(int randomTickSpeed, int schedulerFirst,
                      int waterFlowDelay, int kelpCount, ulong testLength,
-                     int harvestPeriod, int heightLimit, int perHarvestSize,
-                     ulong seed, __global long *totalStorage) {
-  size_t id = get_global_id(0);
-  // if (id >= kelpCount) return;
+                     int harvestPeriod, int heightLimit, long seed,
+                     int harvestSize, __global long *sectionedTotalStorage) {
+  size_t partId = get_global_id(0);
+  size_t harvestId = get_global_id(1);
+  long seedStorage = seed + partId * harvestSize + harvestId;
 
-  __private ulong seedStorage = seed + id;
-
-  // Status of kelp
-  short height = 1;
-  short maxHeight = randomNumber(&seedStorage) % 25 + 2;
-  if (maxHeight > heightLimit)
-    maxHeight = heightLimit;
+  uint existKelps = 256;
+  if (partId * 256 > kelpCount) {
+    existKelps = kelpCount - (256 * (partId - 1));
+  }
   long total = 0;
-  ulong lastTick = 0;
-  ulong grownLastTick = 0;
-
-  size_t calcTime = randomNumber(&seedStorage) % 4096;
-  uint grownCount = 0;
-  ulong timeSinceLastHarvest = 0;
-  ulong timeSinceLastGrow = calcTime;
-  totalStorage[id] = 0;
-  for (ulong time = 0; time < testLength; time++) {
-    timeSinceLastHarvest++;
-    if (timeSinceLastHarvest >= harvestPeriod) {
-      if (schedulerFirst != 0 && grownLastTick != 0)
-        height -= grownLastTick;
-      short harvestedHeight = height - 1;
-      total += harvestedHeight;
-      height = 1;
-      grownLastTick = 0;
-      ulong extraWait = waterFlowDelay + ((schedulerFirst != 0) ? 0 : -1);
-      time += extraWait;
-      timeSinceLastHarvest = extraWait;
-      timeSinceLastGrow += extraWait;
-      continue;
-    }
-    grownLastTick = 0;
-    timeSinceLastGrow++;
-    if (timeSinceLastGrow >= 4096) {
-      for (ushort i = 0; i < randomTickSpeed; i++) {
-        if (height < maxHeight && randomNumber(&seedStorage) % 100 < 14) {
-          height++;
-          grownLastTick++;
-          grownCount++;
-        }
+  uint kelps[256] = {0};
+  for (uint i = 0; i < existKelps; i++) {
+    kelps[i] = nextInt(&seedStorage, heightLimit);
+  }
+  // note that incomplete period is dropped
+  uint tickCount =
+      (schedulerFirst ? harvestPeriod - 1 : harvestPeriod) * randomTickSpeed;
+  for (uint t = 0; t < tickCount; t++) {
+    if (nextInt(&seedStorage, 100) < 14) {
+      int ticked = nextInt(&seedStorage, 4096);
+      if (ticked < existKelps && kelps[ticked] < heightLimit) {
+        kelps[ticked]++;
+        total++;
       }
-      timeSinceLastGrow = timeSinceLastGrow - 4096;
-    }
-    // optimize simulation
-    long timeBeforeGrow = 4096 - timeSinceLastGrow;
-    long timeBeforeHarvest = harvestPeriod - timeSinceLastHarvest;
-    long skipTicks = (timeBeforeGrow < timeBeforeHarvest ? timeBeforeGrow
-                                                         : timeBeforeHarvest) -
-                     2;
-    if (skipTicks > 1) {
-      time += skipTicks;
-      timeSinceLastHarvest += skipTicks;
-      timeSinceLastGrow += skipTicks;
-      grownLastTick = 0;
     }
   }
-  if (schedulerFirst != 0) {
-    total -= grownLastTick;
-  }
-  totalStorage[id] = total;
-  return;
+  sectionedTotalStorage[partId * harvestSize + harvestId] = total;
 }
