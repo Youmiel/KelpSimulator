@@ -26,3 +26,16 @@
   - `REDUCED_KELP_COUNT`: Half simulation, produces approximate results but faster
   - `REDUCED_TEST_LENGTH` and `REDUCED_BOTH`: DON'T USE: HIGH INACCURACY
 
+## Range format definition
+Range format: `r:<start>,<end>,<step>`  
+
+TL;DR It's pretty self-explanatory, just need to follow this format, and you are good to go  
+Config entries using this type also allow defining multiple values separated with `,`
+
+- `<start>` for the start of the range
+- `<end>` for the end of the range
+- `<step>` for the stepping of the range
+
+### Example
+`r:10,100,10` -> `10,20,30,40,50,60,70,80,90,100`
+
