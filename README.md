@@ -3,8 +3,8 @@
 ## Config
 - `randomTickSpeed`: the same as vanillas `randomTickSpeed` game rule
 - `schedulerFirst`: runs tick scheduler before doing randomTick
-  enable for `<1.15` and `>=1.17` behaviors  
-  disable for `1.15-1.16.5` behaviors
+  enable for `<1.14` and `=1.17.1` behaviors  
+  disable for `1.14-1.17` behaviors
 - `waterFlowDelay`: duration in gt between kelp being cut and water source being restored
 - `testLength`: full test duration in gt
 - `harvestPeriod`: interval between harvest operations (allows range definition, see below)
