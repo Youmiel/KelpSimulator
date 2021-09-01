@@ -131,4 +131,7 @@ dmypy.json
 # Custom 
 *.csv
 test.py
+.vscode/
+*.json
+*.py
 delete_thing/
