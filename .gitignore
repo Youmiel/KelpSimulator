@@ -131,3 +131,4 @@ dmypy.json
 # Custom 
 *.csv
 test.py
+delete_thing/
